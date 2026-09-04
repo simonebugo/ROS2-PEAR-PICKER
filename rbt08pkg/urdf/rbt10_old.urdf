@@ -1,0 +1,288 @@
+<?xml version="1.0"?>
+<robot name="rbt10" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+<!-- questo è un commento -->
+<xacro:include filename="$(find rbt08pkg)/urdf/rbt10.gazebo"/>
+
+<link name="world"></link>
+
+<link name="base_link">
+    <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+            <mesh filename="file://$(find rbt08pkg)/meshes/Exe070101Prt.dae"/>
+            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070101Prt.dae"/-->
+            <!--mesh filename="package://rbt08pkg/meshes/Exe070101Prt.dae"/-->
+        </geometry>
+    </visual>
+
+    <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+            <mesh filename="file://$(find rbt08pkg)/meshes/Exe070101Prt.dae"/>
+            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070101Prt.dae"/-->
+            <!--mesh filename="package://rbt08pkg/meshes/Exe070101Prt.dae"/-->
+        </geometry>
+    </collision>
+
+    <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="1" />
+        <inertia ixx="1" ixy="0.0" ixz="0.0" iyy="1" iyz="0.0" izz="1" />
+    </inertial>
+</link>
+
+<link name="link1">
+    <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+            <mesh filename="file://$(find rbt08pkg)/meshes/Exe070102Prt.dae"/>
+            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070102Prt.dae"/-->
+            <!--mesh filename="package://rbt08pkg/meshes/Exe070102Prt.dae"/-->
+        </geometry>
+    </visual>
+
+    <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+            <mesh filename="file://$(find rbt08pkg)/meshes/Exe070102Prt.dae"/>
+            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070102Prt.dae"/-->
+            <!--mesh filename="package://rbt08pkg/meshes/Exe070102Prt.dae"/-->
+        </geometry>
+    </collision>
+
+    <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="1" />
+        <inertia ixx="1" ixy="0.0" ixz="0.0" iyy="1" iyz="0.0" izz="1" />
+    </inertial>
+
+</link>
+
+<link name="link2">
+    <visual>
+        <origin xyz="0 0 0" rpy="3.1416 0 0"/>
+        <geometry>
+            <mesh filename="file://$(find rbt08pkg)/meshes/Exe070103Prt.dae"/>
+            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070103Prt.dae"/-->
+            <!--mesh filename="package://rbt08pkg/meshes/Exe070103Prt.dae"/-->
+        </geometry>
+    </visual>
+
+    <collision>
+        <origin xyz="0 0 0" rpy="3.1416 0 0"/>
+        <geometry>
+            <mesh filename="file://$(find rbt08pkg)/meshes/Exe070103Prt.dae"/>
+            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070103Prt.dae"/-->
+            <!--mesh filename="package://rbt08pkg/meshes/Exe070103Prt.dae"/-->
+        </geometry>
+    </collision>
+
+    <inertial>
+        <origin xyz="0.35 0 0.07" rpy="0 0 0"/>
+        <mass value="46" />
+        <inertia ixx="0.22" ixy="0.0" ixz="0.0" iyy="3.84" iyz="0.0" izz="3.97" />
+    </inertial>
+
+</link>
+
+<link name="link3">
+    <visual>
+        <origin xyz="0 0 0" rpy="1.5707 0 1.5707"/>
+        <!--origin xyz="0 0 0" rpy="0 0 0"/-->
+        <geometry>
+            <mesh filename="file://$(find rbt08pkg)/meshes/Exe070104Prt.dae"/>
+            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070104Prt.dae"/-->
+            <!--mesh filename="package://rbt08pkg/meshes/Exe070104Prt.dae"/-->
+        </geometry>
+    </visual>
+
+    <collision>
+        <origin xyz="0 0 0" rpy="1.5707 0 1.5707"/>
+        <geometry>
+            <mesh filename="file://$(find rbt08pkg)/meshes/Exe070104Prt.dae"/>
+            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070104Prt.dae"/-->
+            <!--mesh filename="package://rbt08pkg/meshes/Exe070104Prt.dae"/-->
+        </geometry>
+    </collision>
+
+    <inertial>
+        <origin xyz="0.036 -0.042 0.063" rpy="0 0 0"/>
+        <mass value="55" />
+        <inertia ixx="0.82" ixy="0.0" ixz="0.0" iyy="0.84" iyz="-0.2" izz="0.66" />
+    </inertial>
+
+</link>
+
+<link name="link4">
+    <visual>
+        <origin xyz="0 0 0" rpy="0 -1.5707 3.1416"/>
+        <geometry>
+            <mesh filename="file://$(find rbt08pkg)/meshes/Exe070105Prt.dae"/>
+            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070105Prt.dae"/-->
+            <!--mesh filename="package://rbt08pkg/meshes/Exe070105Prt.dae"/-->
+        </geometry>
+    </visual>
+
+    <collision>
+        <origin xyz="0 0 0" rpy="0 -1.5707 3.1416"/>
+        <geometry>
+            <mesh filename="file://$(find rbt08pkg)/meshes/Exe070105Prt.dae"/>
+            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070105Prt.dae"/-->
+            <!--mesh filename="package://rbt08pkg/meshes/Exe070105Prt.dae"/-->
+        </geometry>
+    </collision>
+
+    <inertial>
+        <origin xyz="0.28 0.02 0" rpy="0 0 0"/>
+        <mass value="68" />
+        <inertia ixx="0.6" ixy="-0.3" ixz="0.0" iyy="2.2" iyz="0.0" izz="2.4" />
+    </inertial>
+
+</link>
+
+<link name="link5">
+    <visual>
+        <origin xyz="0 0 0" rpy="-1.5707 0 0"/>
+        <geometry>
+            <mesh filename="file://$(find rbt08pkg)/meshes/Exe070106Prt.dae"/>
+            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070106Prt.dae"/-->
+            <!--mesh filename="package://rbt08pkg/meshes/Exe070106Prt.dae"/-->
+        </geometry>
+    </visual>
+
+    <collision>
+        <origin xyz="0 0 0" rpy="-1.5707 0 0"/>
+        <geometry>
+            <mesh filename="file://$(find rbt08pkg)/meshes/Exe070106Prt.dae"/>
+            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070106Prt.dae"/-->
+            <!--mesh filename="package://rbt08pkg/meshes/Exe070106Prt.dae"/-->
+        </geometry>
+    </collision>
+
+    <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="1" />
+        <inertia ixx="1" ixy="0.0" ixz="0.0" iyy="1" iyz="0.0" izz="1" />
+    </inertial>
+
+</link>
+
+<link name="link6">
+    <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+            <mesh filename="file://$(find rbt08pkg)/meshes/Exe070107Prt.dae"/>
+            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070107Prt.dae"/-->
+            <!--mesh filename="package://rbt08pkg/meshes/Exe070107Prt.dae"/-->
+        </geometry>
+    </visual>
+
+    <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+            <mesh filename="file://$(find rbt08pkg)/meshes/Exe070107Prt.dae"/>
+            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070107Prt.dae"/-->
+            <!--mesh filename="package://rbt08pkg/meshes/Exe070107Prt.dae"/-->
+        </geometry>
+    </collision>
+
+    <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="1" />
+        <inertia ixx="1" ixy="0.0" ixz="0.0" iyy="1" iyz="0.0" izz="1" />
+    </inertial>
+
+</link>
+
+<link name="link7_tcp">
+    <visual>
+        <origin xyz="0 0 -0.15" rpy="0 0 0"/>
+        <geometry>
+            <mesh filename="file://$(find rbt08pkg)/meshes/Exe070108Prt.dae"/>
+            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070108Prt.dae"/-->
+            <!--mesh filename="package://rbt08pkg/meshes/Exe070108Prt.dae"/-->
+        </geometry>
+    </visual>
+
+    <collision>
+        <origin xyz="0 0 -0.15" rpy="0 0 0"/>
+        <geometry>
+            <mesh filename="file://$(find rbt08pkg)/meshes/Exe070108Prt.dae"/>
+            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070108Prt.dae"/-->
+            <!--mesh filename="package://rbt08pkg/meshes/Exe070108Prt.dae"/-->
+        </geometry>
+    </collision>
+
+    <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="1" />
+        <inertia ixx="1" ixy="0.0" ixz="0.0" iyy="1" iyz="0.0" izz="1" />
+    </inertial>
+
+</link>
+
+
+<joint name="worldtobase" type="fixed">
+    <parent link="world" />
+    <child link="base_link" />
+    <origin rpy="0 0 0" xyz="0 0 0" />
+</joint>
+
+<joint name="j1" type="revolute">
+    <parent link="base_link"/>
+    <child link="link1"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="1000.0" lower="-3.1415" upper="3.1415" velocity="0.5"/>
+    <origin rpy="0 0 0" xyz="0 0 0.18"/>
+</joint>
+
+<joint name="j2" type="revolute">
+    <parent link="link1"/>
+    <child link="link2"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="100000.0" lower="-3.1415" upper="3.1415" velocity="0.5"/>
+    <origin rpy="-1.5707 -1.5707 0" xyz="0 -0.155 0.15"/>
+</joint>
+
+<joint name="j3" type="revolute">
+    <parent link="link2"/>
+    <child link="link3"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="100000.0" lower="-3.1415" upper="3.1415" velocity="0.5"/>
+    <origin rpy="0 0 0" xyz="0.7 0 0.155"/>
+</joint>
+
+<joint name="j4" type="revolute">
+    <parent link="link3"/>
+    <child link="link4"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="1000.0" lower="-3.1415" upper="3.1415" velocity="0.5"/>
+    <origin rpy="-1.5707 0 0" xyz="0.16 0.205 0"/>
+</joint>
+
+<joint name="j5" type="revolute">
+    <parent link="link4"/>
+    <child link="link5"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="1000.0" lower="-3.1415" upper="3.1415" velocity="0.5"/>
+    <origin rpy="-1.5707 -1.5707 0" xyz="0 0 0.65"/>
+</joint>
+
+<joint name="j6" type="revolute">
+    <parent link="link5"/>
+    <child link="link6"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="1000.0" lower="-3.1415" upper="3.1415" velocity="0.5"/>
+    <origin rpy="1.5707 0 0" xyz="0.2 -0.18 0"/>
+</joint>
+
+<joint name="tcp" type="fixed">
+    <parent link="link6" />
+    <child link="link7_tcp" />
+    <origin rpy="0 0 0" xyz="0 0 0.23" />
+</joint>
+
+
+
+</robot>

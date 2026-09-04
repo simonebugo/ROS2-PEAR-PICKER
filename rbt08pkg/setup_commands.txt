@@ -1,0 +1,30 @@
+
+
+sudo apt install python3-colcon-common-extensions
+sudo apt install python3-vcstool
+sudo apt install ros-jazzy-test-msgs
+sudo apt install ros-jazzy-control-toolbox
+sudo apt install ros-jazzy-gazebo-ros-pkgs
+sudo apt install ros-jazzy-xacro
+sudo apt install ros-jazzy-joint-state-publisher-gui
+sudo apt-get install ros-${ROS_DISTRO}-ros-gz
+sudo apt install ros-jazzy-ros-gz-bridge
+sudo apt install ros-jazzy-controller-manager
+sudo apt install ros-jazzy-gz-ros2-control
+sudo apt install ros-jazzy-joint-trajectory-controller
+sudo apt install ros-jazzy-rqt-joint-trajectory-controller
+sudo apt install ros-jazzy-rqt*
+sudo apt install ros-jazzy-xacro
+sudo apt install ros-jazzy-ros2-control
+sudo apt install ros-jazzy-ros2-controllers
+sudo apt install ros-jazzy-gz-ros2-control
+sudo apt install ros-jazzy-gz-ros2-control-demos
+
+sudo apt install ros-jazzy-moveit
+
+    export QT_QPA_PLATFORM=xcb
+    ros2 run moveit_setup_assistant moveit_setup_assistant
+
+
+
+sudo apt dist-upgrade

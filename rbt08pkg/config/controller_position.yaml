@@ -1,0 +1,67 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 1000 # Hz
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    gripper_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+   
+    #test_pid_controller:
+    #  type: pid_controller/PidController
+
+
+arm_controller:
+  ros__parameters:
+    type: joint_trajectory_controller/JointTrajectoryController
+    #type: pid_controller/PidController
+
+    joints:
+      - j1
+      - j2
+      - j3
+      - j4
+      - j5
+      - j6
+  
+    command_interfaces:
+      - position
+  
+    state_interfaces:
+      - position
+      - velocity
+
+gripper_controller:
+  ros__parameters:
+    joints:
+      - left_finger_joint
+      - right_finger_joint
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+
+test_pid_controller:
+  ros__parameters:
+    type: pid_controller/PidController
+    dof_names:
+      - j1
+      - j2
+      - j3
+      - j4
+      - j5
+      - j6
+   
+    command_interface: position
+
+    reference_and_state_interfaces: ["position"]
+    
+    gains:
+      j1: {p: 100000.0, i: 100.0, d: 10.0, u_clamp_max: 5.0, u_clamp_min: -5.0}
+      j2: {p: 100000.0, i: 100.0, d: 10.0, u_clamp_max: 5.0, u_clamp_min: -5.0}
+      j3: {p: 100000.0, i: 100.0, d: 10.0, u_clamp_max: 5.0, u_clamp_min: -5.0}
+      j4: {p: 100000.0, i: 100.0, d: 10.0, u_clamp_max: 5.0, u_clamp_min: -5.0}
+      j5: {p: 100000.0, i: 100.0, d: 10.0, u_clamp_max: 5.0, u_clamp_min: -5.0}
+      j6: {p: 100000.0, i: 100.0, d: 10.0, u_clamp_max: 5.0, u_clamp_min: -5.0}

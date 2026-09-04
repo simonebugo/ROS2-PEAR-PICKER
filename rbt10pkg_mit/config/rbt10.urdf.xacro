@@ -1,0 +1,12 @@
+<robot name="rbt10" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:arg name="initial_positions_file" default="$(find rbt10pkg_mit)/config/initial_positions.yaml"/>
+
+  <xacro:include filename="$(find rbt08pkg)/urdf/rbt10.urdf"/>
+  <xacro:include filename="rbt10.ros2_control.xacro"/>
+
+  <xacro:rbt10_ros2_control
+    name="FakeSystem"
+    initial_positions_file="$(arg initial_positions_file)"/>
+
+</robot>
