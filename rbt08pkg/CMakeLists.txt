@@ -35,6 +35,8 @@ install(DIRECTORY
 install(PROGRAMS
   scripts/grasp_manager.py
   scripts/spawn_planning_scene.py
+  scripts/pear_pose_source.py
+  scripts/pick_place_manager.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
