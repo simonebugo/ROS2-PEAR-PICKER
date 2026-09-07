@@ -274,8 +274,16 @@
       <geometry>
         <box size=".05 .05 .05"/>
       </geometry>
-      <material name="red"/>
+      <material name="table_camera_red">
+        <color rgba="0.8 0.1 0.1 1.0"/>
+      </material>
     </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size=".05 .05 .05"/>
+      </geometry>
+    </collision>
   
     <inertial>
       <mass value="1.0e-03"/>

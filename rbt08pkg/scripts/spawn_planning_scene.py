@@ -57,36 +57,36 @@ class PlanningSceneSpawner(Node):
         ground.primitive_poses.append(pose_ground)
         objects.append(ground)
 
-        # 2. Tree Trunk (Cylinder: height 1.90m, radius 0.10m at world pose x=1.3, y=0.6, z=0.95)
+        # 2. Tree Trunk (Cylinder: height 2.10m, radius 0.10m at world pose x=1.35, y=0.55, z=1.05)
         trunk = CollisionObject()
         trunk.header.frame_id = 'world'
         trunk.id = 'tree_trunk'
         trunk.operation = CollisionObject.ADD
         cyl_trunk = SolidPrimitive()
         cyl_trunk.type = SolidPrimitive.CYLINDER
-        cyl_trunk.dimensions = [1.90, 0.10]  # [height, radius]
+        cyl_trunk.dimensions = [2.10, 0.10]  # [height, radius]
         pose_trunk = Pose()
-        pose_trunk.position.x = 1.30
-        pose_trunk.position.y = 0.60
-        pose_trunk.position.z = 0.95
+        pose_trunk.position.x = 1.35
+        pose_trunk.position.y = 0.55
+        pose_trunk.position.z = 1.05
         pose_trunk.orientation.w = 1.0
         trunk.primitives.append(cyl_trunk)
         trunk.primitive_poses.append(pose_trunk)
         objects.append(trunk)
 
-        # 3. Fruit Branch (Lower branch: height 0.50m, radius 0.04m, pitch=1.5708)
-        #    Centro ramo in world: tronco(1.30) - 0.22(offset locale) = x=1.08
+        # 3. Fruit branch (length 0.60m, radius 0.04m, horizontal at z=1.48).
+        #    World centre: trunk(1.35) - 0.30 = x=1.05, z=1.48.
         branch = CollisionObject()
         branch.header.frame_id = 'world'
         branch.id = 'fruit_branch'
         branch.operation = CollisionObject.ADD
         cyl_branch = SolidPrimitive()
         cyl_branch.type = SolidPrimitive.CYLINDER
-        cyl_branch.dimensions = [0.50, 0.040]  # [height, radius]
+        cyl_branch.dimensions = [0.60, 0.040]  # [height, radius]
         pose_branch = Pose()
-        pose_branch.position.x = 1.08
-        pose_branch.position.y = 0.60
-        pose_branch.position.z = 1.30
+        pose_branch.position.x = 1.05
+        pose_branch.position.y = 0.55
+        pose_branch.position.z = 1.48
         qx, qy, qz, qw = euler_to_quaternion(0.0, 1.5708, 0.0)
         pose_branch.orientation.x = qx
         pose_branch.orientation.y = qy
@@ -122,7 +122,7 @@ class PlanningSceneSpawner(Node):
             basket_obj.primitive_poses.append(p)
             objects.append(basket_obj)
 
-        # 5. Pear (Sphere: radius 0.075m at x=0.86, y=0.60, z=1.15)
+        # 5. Pear (Sphere: radius 0.075m at x=0.85, y=0.55, z=1.30)
         pear = CollisionObject()
         pear.header.frame_id = 'world'
         pear.id = 'pear'
@@ -131,9 +131,9 @@ class PlanningSceneSpawner(Node):
         sphere_pear.type = SolidPrimitive.SPHERE
         sphere_pear.dimensions = [0.075]  # [radius]
         pose_pear = Pose()
-        pose_pear.position.x = 0.86
-        pose_pear.position.y = 0.60
-        pose_pear.position.z = 1.15
+        pose_pear.position.x = 0.85
+        pose_pear.position.y = 0.55
+        pose_pear.position.z = 1.30
         pose_pear.orientation.w = 1.0
         pear.primitives.append(sphere_pear)
         pear.primitive_poses.append(pose_pear)

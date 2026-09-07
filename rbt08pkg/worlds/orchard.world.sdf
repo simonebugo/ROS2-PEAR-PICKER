@@ -2,7 +2,9 @@
 <sdf version="1.10">
   <world name="pear_orchard">
     <physics name="physics" type="ignored">
-      <max_step_size>0.001</max_step_size>
+      <!-- 200 Hz is sufficient for the arm and leaves CPU time for ROS
+           controller-manager services inside a container. -->
+      <max_step_size>0.005</max_step_size>
       <real_time_factor>1.0</real_time_factor>
     </physics>
     <plugin name="gz::sim::systems::Physics" filename="gz-sim-physics-system"/>
@@ -33,7 +35,7 @@
     <!-- Static tree used as the collision geometry for the first scene. -->
     <model name="pear_tree">
       <static>true</static>
-      <pose>1.3 0.6 0 0 0 0</pose>
+      <pose>1.35 0.55 0 0 0 0</pose>
       <!-- The pear is attached by GraspManager as soon as Gazebo starts. -->
       <plugin filename="gz-sim-detachable-joint-system" name="gz::sim::systems::DetachableJoint">
         <parent_link>tree_link</parent_link>
@@ -45,57 +47,56 @@
       </plugin>
       <link name="tree_link">
         <collision name="trunk_collision">
-          <pose>0 0 0.95 0 0 0</pose>
-          <geometry><cylinder><radius>0.10</radius><length>1.90</length></cylinder></geometry>
+          <pose>0 0 1.05 0 0 0</pose>
+          <geometry><cylinder><radius>0.10</radius><length>2.10</length></cylinder></geometry>
         </collision>
         <visual name="trunk_visual">
-          <pose>0 0 0.95 0 0 0</pose>
-          <geometry><cylinder><radius>0.10</radius><length>1.90</length></cylinder></geometry>
+          <pose>0 0 1.05 0 0 0</pose>
+          <geometry><cylinder><radius>0.10</radius><length>2.10</length></cylinder></geometry>
           <material><ambient>0.26 0.12 0.04 1</ambient><diffuse>0.38 0.20 0.07 1</diffuse></material>
         </visual>
         <collision name="branch_collision">
-          <pose>-0.27 0 1.65 0 1.10 0</pose>
+          <pose>-0.27 0 1.85 0 1.10 0</pose>
           <geometry><cylinder><radius>0.045</radius><length>0.65</length></cylinder></geometry>
         </collision>
         <visual name="branch_visual">
-          <pose>-0.27 0 1.65 0 1.10 0</pose>
+          <pose>-0.27 0 1.85 0 1.10 0</pose>
           <geometry><cylinder><radius>0.045</radius><length>0.65</length></cylinder></geometry>
           <material><ambient>0.26 0.12 0.04 1</ambient><diffuse>0.38 0.20 0.07 1</diffuse></material>
         </visual>
-        <!-- Lower branch supporting the fruit at a reachable height. -->
+        <!-- Lower branch meets the pear stem while keeping the fruit reachable. -->
         <collision name="fruit_branch_collision">
-          <pose>-0.22 0 1.30 0 1.5708 0</pose>
-          <geometry><cylinder><radius>0.040</radius><length>0.50</length></cylinder></geometry>
+          <pose>-0.30 0 1.48 0 1.5708 0</pose>
+          <geometry><cylinder><radius>0.040</radius><length>0.60</length></cylinder></geometry>
         </collision>
         <visual name="fruit_branch_visual">
-          <pose>-0.22 0 1.30 0 1.5708 0</pose>
-          <geometry><cylinder><radius>0.040</radius><length>0.50</length></cylinder></geometry>
+          <pose>-0.30 0 1.48 0 1.5708 0</pose>
+          <geometry><cylinder><radius>0.040</radius><length>0.60</length></cylinder></geometry>
           <material><ambient>0.26 0.12 0.04 1</ambient><diffuse>0.38 0.20 0.07 1</diffuse></material>
         </visual>
         <visual name="canopy_left">
-          <pose>-0.22 -0.12 1.95 0 0 0</pose>
+          <pose>-0.22 -0.12 2.15 0 0 0</pose>
           <geometry><sphere><radius>0.38</radius></sphere></geometry>
           <material><ambient>0.05 0.34 0.07 1</ambient><diffuse>0.08 0.50 0.11 1</diffuse></material>
         </visual>
         <visual name="canopy_right">
-          <pose>0.22 0.14 1.95 0 0 0</pose>
+          <pose>0.22 0.14 2.15 0 0 0</pose>
           <geometry><sphere><radius>0.36</radius></sphere></geometry>
           <material><ambient>0.05 0.34 0.07 1</ambient><diffuse>0.08 0.50 0.11 1</diffuse></material>
         </visual>
         <visual name="canopy_top">
-          <pose>0 0 2.25 0 0 0</pose>
+          <pose>0 0 2.45 0 0 0</pose>
           <geometry><sphere><radius>0.34</radius></sphere></geometry>
           <material><ambient>0.05 0.34 0.07 1</ambient><diffuse>0.08 0.50 0.11 1</diffuse></material>
         </visual>
       </link>
     </model>
 
-    <!-- Dynamic pear. Its initial fixed joint to the lower branch is created
-         by the detachable-joint system before the world is unpaused. -->
+    <!-- Dynamic pear. Its stem reaches the lower branch at z = 1.48 m. -->
     <model name="pear">
       <static>false</static>
       <self_collide>false</self_collide>
-      <pose>0.86 0.60 1.15 0 0 0</pose>
+      <pose>0.85 0.55 1.30 0 0 0</pose>
       <link name="pear_link">
         <inertial>
           <mass>0.30</mass>
