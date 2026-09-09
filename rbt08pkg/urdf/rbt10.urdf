@@ -1,6 +1,9 @@
 <?xml version="1.0"?>
 <robot name="rbt10" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
+<xacro:arg name="enable_gz_ros2_control" default="false"/>
+<xacro:arg name="enable_physical_grasp" default="true"/>
+
 <!-- questo è un commento -->
 <xacro:include filename="$(find rbt08pkg)/urdf/rbt10.gazebo"/>
 <xacro:include filename="$(find rbt08pkg)/urdf/gripper.urdf.xacro"/>

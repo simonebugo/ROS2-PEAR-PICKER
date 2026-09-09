@@ -100,6 +100,8 @@ class PickPlaceManager(Node):
         # Publisher Marker 3D & Planning Scene
         self.pub_markers = self.create_publisher(MarkerArray, '/harvest/target_markers', 10)
         self.pub_planning_scene = self.create_publisher(PlanningScene, '/planning_scene', 10)
+        self.pub_gripper_close_complete = self.create_publisher(
+            Empty, '/harvest/gripper/close_complete', 10)
 
         self.current_grasp_state = 'UNKNOWN'
         self._grasp_state_condition = threading.Condition()
@@ -641,6 +643,11 @@ class PickPlaceManager(Node):
         if not self.command_gripper(closed_position):
             self.get_logger().error("FASE 3 FALLITA: Chiusura del gripper fallita.")
             return
+        # GraspManager uses this event after the controller has completed the
+        # deliberate close command at the known grasp pose.  This also covers
+        # Gazebo configurations where collision blocks the finger joints but
+        # the ContactSensor stream is unavailable.
+        self.pub_gripper_close_complete.publish(Empty())
         require_physical_grasp = bool(
             self.get_parameter('require_physical_grasp').value)
         if (require_physical_grasp and
@@ -661,7 +668,11 @@ class PickPlaceManager(Node):
         # retraces the safe horizontal approach; the second raises the pear in
         # the cleared area, away from the trunk and fruit branch.
         self.get_logger().info("[FASE 5/8] Arretramento dal ramo e sollevamento pera...")
-        if not self.execute_cartesian_path([pre_g.pose, lift.pose]):
+        # The start state intentionally contains the newly grasped pear close
+        # to the fingers and branch.  Permit the known outward escape path;
+        # collision checking resumes for the free-space transport afterwards.
+        if not self.execute_cartesian_path(
+                [pre_g.pose, lift.pose], avoid_collisions=False):
             self.get_logger().error("FASE 5 FALLITA: Arretramento/lift dal ramo fallito. Sequenza interrotta.")
             return
 

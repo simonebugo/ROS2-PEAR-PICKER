@@ -32,67 +32,8 @@
       </link>
     </model>
 
-    <!-- Static tree used as the collision geometry for the first scene. -->
-    <model name="pear_tree">
-      <static>true</static>
-      <pose>1.35 0.55 0 0 0 0</pose>
-      <!-- The pear is attached by GraspManager as soon as Gazebo starts. -->
-      <plugin filename="gz-sim-detachable-joint-system" name="gz::sim::systems::DetachableJoint">
-        <parent_link>tree_link</parent_link>
-        <child_model>pear</child_model>
-        <child_link>pear_link</child_link>
-        <attach_topic>/harvest/tree/attach</attach_topic>
-        <detach_topic>/harvest/tree/detach</detach_topic>
-        <output_topic>/harvest/tree/state</output_topic>
-      </plugin>
-      <link name="tree_link">
-        <collision name="trunk_collision">
-          <pose>0 0 1.05 0 0 0</pose>
-          <geometry><cylinder><radius>0.10</radius><length>2.10</length></cylinder></geometry>
-        </collision>
-        <visual name="trunk_visual">
-          <pose>0 0 1.05 0 0 0</pose>
-          <geometry><cylinder><radius>0.10</radius><length>2.10</length></cylinder></geometry>
-          <material><ambient>0.26 0.12 0.04 1</ambient><diffuse>0.38 0.20 0.07 1</diffuse></material>
-        </visual>
-        <collision name="branch_collision">
-          <pose>-0.27 0 1.85 0 1.10 0</pose>
-          <geometry><cylinder><radius>0.045</radius><length>0.65</length></cylinder></geometry>
-        </collision>
-        <visual name="branch_visual">
-          <pose>-0.27 0 1.85 0 1.10 0</pose>
-          <geometry><cylinder><radius>0.045</radius><length>0.65</length></cylinder></geometry>
-          <material><ambient>0.26 0.12 0.04 1</ambient><diffuse>0.38 0.20 0.07 1</diffuse></material>
-        </visual>
-        <!-- Lower branch meets the pear stem while keeping the fruit reachable. -->
-        <collision name="fruit_branch_collision">
-          <pose>-0.30 0 1.48 0 1.5708 0</pose>
-          <geometry><cylinder><radius>0.040</radius><length>0.60</length></cylinder></geometry>
-        </collision>
-        <visual name="fruit_branch_visual">
-          <pose>-0.30 0 1.48 0 1.5708 0</pose>
-          <geometry><cylinder><radius>0.040</radius><length>0.60</length></cylinder></geometry>
-          <material><ambient>0.26 0.12 0.04 1</ambient><diffuse>0.38 0.20 0.07 1</diffuse></material>
-        </visual>
-        <visual name="canopy_left">
-          <pose>-0.22 -0.12 2.15 0 0 0</pose>
-          <geometry><sphere><radius>0.38</radius></sphere></geometry>
-          <material><ambient>0.05 0.34 0.07 1</ambient><diffuse>0.08 0.50 0.11 1</diffuse></material>
-        </visual>
-        <visual name="canopy_right">
-          <pose>0.22 0.14 2.15 0 0 0</pose>
-          <geometry><sphere><radius>0.36</radius></sphere></geometry>
-          <material><ambient>0.05 0.34 0.07 1</ambient><diffuse>0.08 0.50 0.11 1</diffuse></material>
-        </visual>
-        <visual name="canopy_top">
-          <pose>0 0 2.45 0 0 0</pose>
-          <geometry><sphere><radius>0.34</radius></sphere></geometry>
-          <material><ambient>0.05 0.34 0.07 1</ambient><diffuse>0.08 0.50 0.11 1</diffuse></material>
-        </visual>
-      </link>
-    </model>
-
-    <!-- Dynamic pear. Its stem reaches the lower branch at z = 1.48 m. -->
+    <!-- Declare the dynamic pear before the tree so the tree's detachable
+         joint can resolve its child model during plugin initialization. -->
     <model name="pear">
       <static>false</static>
       <self_collide>false</self_collide>
@@ -137,6 +78,66 @@
           <pose>0 0 0.14 0 0 0</pose>
           <geometry><cylinder><radius>0.009</radius><length>0.08</length></cylinder></geometry>
           <material><ambient>0.20 0.09 0.02 1</ambient><diffuse>0.30 0.15 0.03 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Static tree used as the collision geometry for the first scene. -->
+    <model name="pear_tree">
+      <static>true</static>
+      <pose>1.35 0.55 0 0 0 0</pose>
+      <plugin filename="gz-sim-detachable-joint-system" name="gz::sim::systems::DetachableJoint">
+        <parent_link>tree_link</parent_link>
+        <child_model>pear</child_model>
+        <child_link>pear_link</child_link>
+        <attach_topic>/harvest/tree/attach</attach_topic>
+        <detach_topic>/harvest/tree/detach</detach_topic>
+        <output_topic>/harvest/tree/state</output_topic>
+        <suppress_child_warning>true</suppress_child_warning>
+      </plugin>
+      <link name="tree_link">
+        <collision name="trunk_collision">
+          <pose>0 0 1.05 0 0 0</pose>
+          <geometry><cylinder><radius>0.10</radius><length>2.10</length></cylinder></geometry>
+        </collision>
+        <visual name="trunk_visual">
+          <pose>0 0 1.05 0 0 0</pose>
+          <geometry><cylinder><radius>0.10</radius><length>2.10</length></cylinder></geometry>
+          <material><ambient>0.26 0.12 0.04 1</ambient><diffuse>0.38 0.20 0.07 1</diffuse></material>
+        </visual>
+        <collision name="branch_collision">
+          <pose>-0.27 0 1.85 0 1.10 0</pose>
+          <geometry><cylinder><radius>0.045</radius><length>0.65</length></cylinder></geometry>
+        </collision>
+        <visual name="branch_visual">
+          <pose>-0.27 0 1.85 0 1.10 0</pose>
+          <geometry><cylinder><radius>0.045</radius><length>0.65</length></cylinder></geometry>
+          <material><ambient>0.26 0.12 0.04 1</ambient><diffuse>0.38 0.20 0.07 1</diffuse></material>
+        </visual>
+        <!-- Lower branch meets the pear stem while keeping the fruit reachable. -->
+        <collision name="fruit_branch_collision">
+          <pose>-0.30 0 1.48 0 1.5708 0</pose>
+          <geometry><cylinder><radius>0.040</radius><length>0.60</length></cylinder></geometry>
+        </collision>
+        <visual name="fruit_branch_visual">
+          <pose>-0.30 0 1.48 0 1.5708 0</pose>
+          <geometry><cylinder><radius>0.040</radius><length>0.60</length></cylinder></geometry>
+          <material><ambient>0.26 0.12 0.04 1</ambient><diffuse>0.38 0.20 0.07 1</diffuse></material>
+        </visual>
+        <visual name="canopy_left">
+          <pose>-0.22 -0.12 2.15 0 0 0</pose>
+          <geometry><sphere><radius>0.38</radius></sphere></geometry>
+          <material><ambient>0.05 0.34 0.07 1</ambient><diffuse>0.08 0.50 0.11 1</diffuse></material>
+        </visual>
+        <visual name="canopy_right">
+          <pose>0.22 0.14 2.15 0 0 0</pose>
+          <geometry><sphere><radius>0.36</radius></sphere></geometry>
+          <material><ambient>0.05 0.34 0.07 1</ambient><diffuse>0.08 0.50 0.11 1</diffuse></material>
+        </visual>
+        <visual name="canopy_top">
+          <pose>0 0 2.45 0 0 0</pose>
+          <geometry><sphere><radius>0.34</radius></sphere></geometry>
+          <material><ambient>0.05 0.34 0.07 1</ambient><diffuse>0.08 0.50 0.11 1</diffuse></material>
         </visual>
       </link>
     </model>

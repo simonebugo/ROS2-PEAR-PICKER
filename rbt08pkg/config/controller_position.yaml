@@ -1,9 +1,12 @@
 controller_manager:
   ros__parameters:
-    update_rate: 1000 # Hz
+    update_rate: 200 # Hz, aligned with the Gazebo physics step
 
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
+
+    arm_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
 
     gripper_controller:
       type: joint_trajectory_controller/JointTrajectoryController
@@ -14,9 +17,6 @@ controller_manager:
 
 arm_controller:
   ros__parameters:
-    type: joint_trajectory_controller/JointTrajectoryController
-    #type: pid_controller/PidController
-
     joints:
       - j1
       - j2

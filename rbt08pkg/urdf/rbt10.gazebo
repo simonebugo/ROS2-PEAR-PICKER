@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<robot>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
     <gazebo>
         <plugin
             filename="gz-sim-joint-state-publisher-system"
@@ -16,18 +16,20 @@
         </plugin>
     </gazebo>
 
-    <gazebo>
-        <!-- Creates a fixed joint to the pear only after GraspManager has
-             confirmed contact from both fingertips. -->
-        <plugin filename="gz-sim-detachable-joint-system" name="gz::sim::systems::DetachableJoint">
-            <parent_link>grasp_frame</parent_link>
-            <child_model>pear</child_model>
-            <child_link>pear_link</child_link>
-            <attach_topic>/harvest/gripper/attach</attach_topic>
-            <detach_topic>/harvest/gripper/detach</detach_topic>
-            <output_topic>/harvest/gripper/state</output_topic>
-        </plugin>
-    </gazebo>
+    <xacro:if value="$(arg enable_physical_grasp)">
+        <gazebo>
+            <!-- grasp_frame_joint is explicitly preserved during URDF-to-SDF
+                 conversion, so this origin is the physical grasp centre. -->
+            <plugin filename="gz-sim-detachable-joint-system" name="gz::sim::systems::DetachableJoint">
+                <parent_link>grasp_frame</parent_link>
+                <child_model>pear</child_model>
+                <child_link>pear_link</child_link>
+                <attach_topic>/harvest/gripper/attach</attach_topic>
+                <detach_topic>/harvest/gripper/detach</detach_topic>
+                <output_topic>/harvest/gripper/state</output_topic>
+            </plugin>
+        </gazebo>
+    </xacro:if>
 
     <gazebo reference="left_finger_link">
         <mu1>1.2</mu1>
@@ -51,17 +53,19 @@
         </sensor>
     </gazebo>
 
-    <gazebo>
-        <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
-            <parameters>$(find rbt08pkg)/config/controller_position.yaml</parameters>
-        </plugin>
-    </gazebo>
+    <xacro:if value="$(arg enable_gz_ros2_control)">
+        <gazebo>
+            <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+                <parameters>$(find rbt08pkg)/config/controller_position.yaml</parameters>
+            </plugin>
+        </gazebo>
+    </xacro:if>
 
-    <!--
-    <ros2_control name="GazeboSystem" type="system">
-        <hardware>
-            <plugin>gz_ros2_control/GazeboSimSystem</plugin>
-        </hardware>
+    <xacro:if value="$(arg enable_gz_ros2_control)">
+      <ros2_control name="GazeboSystem" type="system">
+          <hardware>
+              <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+          </hardware>
     
         <joint name="j1">
             <command_interface name="position">
@@ -157,8 +161,8 @@
             <state_interface name="velocity"/>
         </joint>
 
-    </ros2_control>
-    -->
+      </ros2_control>
+    </xacro:if>
 
     <gazebo reference="table_camera_link">
     <sensor name="camera" type="camera">

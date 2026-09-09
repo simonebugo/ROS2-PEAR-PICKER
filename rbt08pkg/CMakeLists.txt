@@ -37,6 +37,7 @@ install(PROGRAMS
   scripts/spawn_planning_scene.py
   scripts/pear_pose_source.py
   scripts/pick_place_manager.py
+  scripts/moveit_smoke_test.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

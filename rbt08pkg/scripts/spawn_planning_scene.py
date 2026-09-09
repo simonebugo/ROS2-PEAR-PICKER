@@ -74,7 +74,28 @@ class PlanningSceneSpawner(Node):
         trunk.primitive_poses.append(pose_trunk)
         objects.append(trunk)
 
-        # 3. Fruit branch (length 0.60m, radius 0.04m, horizontal at z=1.48).
+        # 3. Upper branch, matching branch_collision in orchard.world.sdf.
+        upper_branch = CollisionObject()
+        upper_branch.header.frame_id = 'world'
+        upper_branch.id = 'upper_branch'
+        upper_branch.operation = CollisionObject.ADD
+        cyl_upper_branch = SolidPrimitive()
+        cyl_upper_branch.type = SolidPrimitive.CYLINDER
+        cyl_upper_branch.dimensions = [0.65, 0.045]
+        pose_upper_branch = Pose()
+        pose_upper_branch.position.x = 1.08
+        pose_upper_branch.position.y = 0.55
+        pose_upper_branch.position.z = 1.85
+        qx, qy, qz, qw = euler_to_quaternion(0.0, 1.10, 0.0)
+        pose_upper_branch.orientation.x = qx
+        pose_upper_branch.orientation.y = qy
+        pose_upper_branch.orientation.z = qz
+        pose_upper_branch.orientation.w = qw
+        upper_branch.primitives.append(cyl_upper_branch)
+        upper_branch.primitive_poses.append(pose_upper_branch)
+        objects.append(upper_branch)
+
+        # 4. Fruit branch (length 0.60m, radius 0.04m, horizontal at z=1.48).
         #    World centre: trunk(1.35) - 0.30 = x=1.05, z=1.48.
         branch = CollisionObject()
         branch.header.frame_id = 'world'
@@ -96,7 +117,7 @@ class PlanningSceneSpawner(Node):
         branch.primitive_poses.append(pose_branch)
         objects.append(branch)
 
-        # 4. Collection Basket (Center: x=0.65, y=-0.55, z=0)
+        # 5. Collection Basket (Center: x=0.65, y=-0.55, z=0)
         basket_parts = [
             ('basket_bottom', [0.32, 0.32, 0.04], [0.65, -0.55, 0.02]),
             ('basket_left_wall', [0.32, 0.03, 0.22], [0.65, -0.405, 0.13]),
@@ -122,7 +143,7 @@ class PlanningSceneSpawner(Node):
             basket_obj.primitive_poses.append(p)
             objects.append(basket_obj)
 
-        # 5. Pear (Sphere: radius 0.075m at x=0.85, y=0.55, z=1.30)
+        # 6. Pear body and neck, matching both Gazebo collision spheres.
         pear = CollisionObject()
         pear.header.frame_id = 'world'
         pear.id = 'pear'
@@ -137,6 +158,17 @@ class PlanningSceneSpawner(Node):
         pose_pear.orientation.w = 1.0
         pear.primitives.append(sphere_pear)
         pear.primitive_poses.append(pose_pear)
+
+        sphere_pear_neck = SolidPrimitive()
+        sphere_pear_neck.type = SolidPrimitive.SPHERE
+        sphere_pear_neck.dimensions = [0.052]
+        pose_pear_neck = Pose()
+        pose_pear_neck.position.x = 0.85
+        pose_pear_neck.position.y = 0.55
+        pose_pear_neck.position.z = 1.365
+        pose_pear_neck.orientation.w = 1.0
+        pear.primitives.append(sphere_pear_neck)
+        pear.primitive_poses.append(pose_pear_neck)
         objects.append(pear)
 
         scene_msg.world.collision_objects = objects

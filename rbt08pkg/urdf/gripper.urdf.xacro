@@ -79,10 +79,25 @@
   </joint>
 
   <!-- Centre of the grasp; use this frame as the target pose in MoveIt. -->
-  <link name="grasp_frame"/>
+  <link name="grasp_frame">
+    <!-- Negligible inertia keeps this reference as a valid physics link when
+         its fixed joint is preserved for the detachable grasp joint. -->
+    <inertial>
+      <mass value="0.000001"/>
+      <inertia ixx="1e-9" ixy="0" ixz="0"
+               iyy="1e-9" iyz="0" izz="1e-9"/>
+    </inertial>
+  </link>
   <joint name="grasp_frame_joint" type="fixed">
     <parent link="gripper_base_link"/>
     <child link="grasp_frame"/>
     <origin xyz="0 0 0.19" rpy="0 0 0"/>
   </joint>
+
+  <!-- DetachableJoint needs a real Gazebo link at the grasp centre.  Without
+       this directive sdformat lumps grasp_frame into its fixed parent and the
+       pear is attached using the wrist origin, producing a large offset. -->
+  <gazebo reference="grasp_frame_joint">
+    <preserveFixedJoint>true</preserveFixedJoint>
+  </gazebo>
 </robot>

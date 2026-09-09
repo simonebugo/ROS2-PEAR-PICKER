@@ -58,9 +58,3 @@
   ros_type_name: "ros_gz_interfaces/msg/Contacts"
   gz_type_name: "gz.msgs.Contacts"
   direction: "GZ_TO_ROS"
-
-- ros_service_name: "/world/pear_orchard/control"
-  gz_service_name: "/world/pear_orchard/control"
-  ros_type_name: "ros_gz_interfaces/srv/ControlWorld"
-  gz_req_type_name: "gz.msgs.WorldControl"
-  gz_rep_type_name: "gz.msgs.Boolean"
