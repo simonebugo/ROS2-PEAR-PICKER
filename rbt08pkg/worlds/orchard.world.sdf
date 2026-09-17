@@ -11,6 +11,11 @@
     <plugin name="gz::sim::systems::UserCommands" filename="gz-sim-user-commands-system"/>
     <plugin name="gz::sim::systems::SceneBroadcaster" filename="gz-sim-scene-broadcaster-system"/>
     <plugin name="gz::sim::systems::Contact" filename="gz-sim-contact-system"/>
+    <!-- Rendering sensors need their own server-side renderer, even when
+         the Gazebo GUI uses ogre for compatibility with a VM. -->
+    <plugin name="gz::sim::systems::Sensors" filename="gz-sim-sensors-system">
+      <render_engine>ogre2</render_engine>
+    </plugin>
 
     <gravity>0 0 -9.81</gravity>
     <scene>

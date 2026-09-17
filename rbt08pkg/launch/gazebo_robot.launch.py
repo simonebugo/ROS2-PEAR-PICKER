@@ -11,6 +11,7 @@ from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -21,6 +22,7 @@ def generate_launch_description():
     model = LaunchConfiguration('model')
     enable_ros2_control = LaunchConfiguration('enable_ros2_control')
     enable_physical_grasp = LaunchConfiguration('enable_physical_grasp')
+    enable_camera = LaunchConfiguration('enable_camera')
     render_engine = LaunchConfiguration('render_engine')
 
     urdf_path = PathJoinSubstitution([
@@ -42,6 +44,9 @@ def generate_launch_description():
         package_share,
         'config',
         'gz_bridge.yaml',
+    )
+    camera_bridge_config = os.path.join(
+        package_share, 'config', 'gz_bridge_camera.yaml',
     )
 
     return LaunchDescription([
@@ -68,10 +73,16 @@ def generate_launch_description():
             description='Enable contact sensing and physical pear joints.',
         ),
         DeclareLaunchArgument(
+            'enable_camera',
+            default_value='false',
+            choices=['true', 'false'],
+            description='Enable the fixed RGB-D camera and its ROS bridge.',
+        ),
+        DeclareLaunchArgument(
             'render_engine',
             default_value='ogre',
             choices=['ogre', 'ogre2'],
-            description='Gazebo renderer; ogre is more reliable in VMs.',
+            description='Gazebo GUI renderer; RGB-D sensors use ogre2 on the server.',
         ),
         SetEnvironmentVariable(
             name='GZ_SIM_RESOURCE_PATH',
@@ -84,8 +95,9 @@ def generate_launch_description():
             launch_arguments={
                 'gz_args': [
                     world_path,
-                    ' -r -v 2 --render-engine ',
+                    ' -r -v 2 --render-engine-gui ',
                     render_engine,
+                    ' --render-engine-server ogre2',
                 ],
             }.items(),
         ),
@@ -95,14 +107,16 @@ def generate_launch_description():
             name='robot_state_publisher',
             output='screen',
             parameters=[{
-                'robot_description': Command([
+                'robot_description': ParameterValue(Command([
                     'xacro ',
                     urdf_path,
                     ' enable_gz_ros2_control:=',
                     enable_ros2_control,
                     ' enable_physical_grasp:=',
                     enable_physical_grasp,
-                ]),
+                    ' enable_camera:=',
+                    enable_camera,
+                ]), value_type=str),
                 'use_sim_time': True,
             }],
         ),
@@ -141,6 +155,17 @@ def generate_launch_description():
                 'use_sim_time': True,
             }],
             condition=IfCondition(enable_physical_grasp),
+        ),
+        Node(
+            package='ros_gz_bridge',
+            executable='parameter_bridge',
+            name='camera_bridge',
+            output='screen',
+            parameters=[{
+                'config_file': camera_bridge_config,
+                'use_sim_time': True,
+            }],
+            condition=IfCondition(enable_camera),
         ),
         Node(
             package='rbt08pkg',

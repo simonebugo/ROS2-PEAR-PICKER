@@ -1,0 +1,75 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Global Options:
+    Fixed Frame: world
+    Background Color: 48; 48; 48
+    Frame Rate: 30
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Cell Size: 0.5
+    - Class: rviz_default_plugins/RobotModel
+      Name: Robot
+      Enabled: true
+      Description Source: Topic
+      Description Topic:
+        Value: /robot_description
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+      Visual Enabled: true
+      Collision Enabled: false
+    - Class: rviz_default_plugins/TF
+      Name: Camera TF
+      Enabled: true
+      Show Axes: true
+      Show Names: true
+      Show Arrows: false
+    - Class: rviz_default_plugins/Image
+      Name: RGB
+      Enabled: true
+      Topic:
+        Value: /orchard/camera/rgb/image_raw
+        Reliability Policy: Best Effort
+        Durability Policy: Volatile
+        Depth: 5
+    - Class: rviz_default_plugins/Image
+      Name: Depth
+      Enabled: true
+      Topic:
+        Value: /orchard/camera/depth/image_raw
+        Reliability Policy: Best Effort
+        Durability Policy: Volatile
+        Depth: 5
+      Normalize Range: false
+      Min Value: 0.1
+      Max Value: 5
+    - Class: rviz_default_plugins/Marker
+      Name: Optical axis check
+      Enabled: true
+      Topic:
+        Value: /orchard/camera/optical_axis
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+        Depth: 5
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 3.5
+      Focal Point:
+        X: 0.6
+        Y: 0.5
+        Z: 0.9
+      Pitch: 0.5
+      Yaw: 0.8
+Window Geometry:
+  Width: 1400
+  Height: 900

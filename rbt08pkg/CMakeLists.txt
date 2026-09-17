@@ -38,6 +38,7 @@ install(PROGRAMS
   scripts/pear_pose_source.py
   scripts/pick_place_manager.py
   scripts/moveit_smoke_test.py
+  scripts/camera_pipeline_check.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

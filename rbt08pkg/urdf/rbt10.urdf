@@ -3,13 +3,12 @@
 
 <xacro:arg name="enable_gz_ros2_control" default="false"/>
 <xacro:arg name="enable_physical_grasp" default="true"/>
+<xacro:arg name="enable_camera" default="false"/>
 
 <!-- questo è un commento -->
 <xacro:include filename="$(find rbt08pkg)/urdf/rbt10.gazebo"/>
 <xacro:include filename="$(find rbt08pkg)/urdf/gripper.urdf.xacro"/>
 
-<!-- to include the camera plugin file -->
-<!--xacro:include filename="$(find rbt08pkg)/urdf/camera.gazebo"/-->
 
 
 <link name="world"></link>
@@ -259,13 +258,15 @@
 
 <!-- STEP 12 - Table camera -->
 <joint type="fixed" name="table_camera_joint">
-    <origin xyz="1.0 0.4 0.2" rpy="0 0 3.6652"/>
+    <!-- +X points towards the initial pear centre (0.85, 0.55, 1.30). -->
+    <origin xyz="0.55 1.35 1.55" rpy="0 0.2846566951 -1.2120256565"/>
     <child link="table_camera_link"/>
     <parent link="world"/>
 </joint>
 
 <joint type="fixed" name="table_camera_optical_joint">
-    <origin xyz="0 0 0" rpy="-1.5707 0 -1.5707"/>
+    <!-- ROS optical axes: +Z forward, +X right, +Y down. -->
+    <origin xyz="0 0 0" rpy="-1.5707963267948966 0 -1.5707963267948966"/>
     <child link="table_camera_link_optical"/>
     <parent link="table_camera_link"/>
 </joint>
