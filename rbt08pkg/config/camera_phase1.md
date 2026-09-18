@@ -1,10 +1,13 @@
 # Fase 1: collaudo camera RGB-D
 
-Camera fissa in world a `(0.55, 1.35, 1.55)` m, rivolta verso la posa
+Camera fissa in world a `(0.15, -0.55, 1.75)` m, dietro e sopra il braccio,
+rivolta verso la posa
 iniziale della pera `(0.85, 0.55, 1.30)` m. RGB e depth condividono
-risoluzione 640x480, FOV orizzontale 80 gradi, 10 Hz e frame ottico
+risoluzione 640x480, FOV orizzontale 60 gradi, 10 Hz e frame ottico
 `table_camera_link_optical`. Depth: `32FC1`, metri; fuori portata i valori
 possono essere non finiti. CameraInfo vale per entrambi gli stream.
+Il nuovo FOV aggiorna automaticamente gli intrinseci pubblicati dal sensore:
+continuare a leggerli da CameraInfo. La pera ha corpo e collo gialli.
 
 ## Avvio nel container
 

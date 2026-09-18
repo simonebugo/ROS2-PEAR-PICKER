@@ -3,3 +3,9 @@
 *.pyc
 __pycache__/
 /datasets/
+/.venv-yolo/
+/.venv-yolo-train/
+/vision/runs/
+/vision/models/*.pt
+/yolo*.pt
+/vision/copy_hsv_to_container.ps1

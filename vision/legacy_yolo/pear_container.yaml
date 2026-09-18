@@ -1,0 +1,8 @@
+# Archivio YOLO: non usato dalla segmentazione HSV.
+path: /root/sr_ws10/datasets/pear640/prepared
+train: images/train
+val: images/val
+test: images/test
+
+names:
+  0: pear

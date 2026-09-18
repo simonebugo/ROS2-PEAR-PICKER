@@ -258,8 +258,8 @@
 
 <!-- STEP 12 - Table camera -->
 <joint type="fixed" name="table_camera_joint">
-    <!-- +X points towards the initial pear centre (0.85, 0.55, 1.30). -->
-    <origin xyz="0.55 1.35 1.55" rpy="0 0.2846566951 -1.2120256565"/>
+    <!-- Rear/raised view: +X points at the pear, above the initial arm silhouette. -->
+    <origin xyz="0.15 -0.55 1.75" rpy="0 0.3323335118 1.0040671093"/>
     <child link="table_camera_link"/>
     <parent link="world"/>
 </joint>

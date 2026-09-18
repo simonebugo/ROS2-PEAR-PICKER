@@ -1,0 +1,14 @@
+pear_detector:
+  ros__parameters:
+    # OpenCV uint8 HSV: H=0..179, S/V=0..255. Initial range for the yellow fruit.
+    hsv_lower: [18, 100, 45]
+    hsv_upper: [38, 255, 255]
+    opening_size: 3
+    closing_size: 5
+    min_area_px: 80
+    max_area_fraction: 0.15
+    min_aspect_ratio: 0.35
+    max_aspect_ratio: 1.8
+    min_fill_ratio: 0.40
+    max_rate_hz: 5.0
+    stream_timeout_s: 10.0

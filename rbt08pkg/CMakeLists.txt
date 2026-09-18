@@ -39,6 +39,12 @@ install(PROGRAMS
   scripts/pick_place_manager.py
   scripts/moveit_smoke_test.py
   scripts/camera_pipeline_check.py
+  scripts/pear_detector.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(FILES
+  scripts/pear_segmentation.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

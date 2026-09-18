@@ -3,7 +3,7 @@
   <gazebo reference="table_camera_link">
     <sensor name="orchard_rgbd_camera" type="rgbd_camera">
       <camera>
-        <horizontal_fov>1.3962634</horizontal_fov>
+        <horizontal_fov>1.0471975512</horizontal_fov>
         <image>
           <width>640</width>
           <height>480</height>
