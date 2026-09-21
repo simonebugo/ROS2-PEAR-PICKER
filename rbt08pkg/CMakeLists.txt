@@ -40,11 +40,15 @@ install(PROGRAMS
   scripts/moveit_smoke_test.py
   scripts/camera_pipeline_check.py
   scripts/pear_detector.py
+  scripts/pear_surface_estimator.py
+  scripts/pear_world_transformer.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
 install(FILES
   scripts/pear_segmentation.py
+  scripts/pear_depth.py
+  scripts/pear_center.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

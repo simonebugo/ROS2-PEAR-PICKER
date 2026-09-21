@@ -3,8 +3,10 @@
 Il percorso attivo usa OpenCV del sistema ROS, senza Ultralytics, PyTorch,
 pesi o venv. Il detector seleziona regioni gialle, pulisce la maschera e sceglie
 la componente piu' grande che supera i filtri geometrici.
-Questa fase e' detection 2D: non pubblica /harvest/pear_pose e non avvia il
-pick-and-place. La camera RGB-D e i TF esistenti sono riutilizzati.
+Il detector esegue la detection 2D; il launch avvia anche la stima della
+superficie 3D descritta in [depth_phase.md](depth_phase.md). Nessuno dei due
+pubblica /harvest/pear_pose o avvia il pick-and-place.
+La camera RGB-D e i TF esistenti sono riutilizzati.
 
 ## 1. Copia selettiva da Windows
 
@@ -130,7 +132,7 @@ solo il messaggio RGB piu' recente. Non accelera il rendering di Gazebo.
 
 Al timeout pubblica una detection vuota e maschere nere, conservando lo stamp
 dell'ultima immagine (non inventa una nuova misura). Riprende con il prossimo RGB.
-La futura stima 3D dovra' comunque verificare timestamp e stato del target.
+La stima 3D abbina timestamp esatti e invalida risultati senza target o scaduti.
 
 ## 5. Regolazione senza modificare il codice
 
@@ -203,9 +205,26 @@ class_id resta pear. **score e' area della regione / area della bbox**,
 un indice geometrico [0,1], non la probabilita' YOLO: non confrontarlo con le
 vecchie soglie confidence. Il picciolo marrone non fa parte della maschera.
 
-La fase successiva campionera' depth nei pixel interni della maschera,
-trasformera' il punto con TF e colleghera' la posa al pick-and-place.
+La stima camera-frame campiona gia' la depth nei pixel interni della maschera.
+Le fasi successive trasformeranno il punto con TF e definiranno la correzione
+per il grasp prima di collegare la posa al pick-and-place.
 Non usare ancora questo test come validazione del grasp guidato dalla camera.
 
 Riferimenti: [sogliatura HSV OpenCV](https://docs.opencv.org/4.x/da/d97/tutorial_threshold_inRange.html),
 [componenti connesse](https://docs.opencv.org/4.x/d3/dc0/group__imgproc__shape.html).
+
+## Stima 3D della superficie
+
+La nuova fase camera-frame è descritta in [depth_phase.md](depth_phase.md),
+con build, test automatici e verifiche RViz. Non è ancora collegata al robot.
+
+## Trasformazione in world
+
+Il launch avvia anche la trasformazione TF2 del punto di superficie:
+[world_phase.md](world_phase.md) descrive preflight e confronto dei marker.
+Non è ancora una posa di grasp e non avvia il pick-and-place.
+
+## Centro stimato
+
+Il transformer pubblica ora anche un centro approssimato e un marker arancione.
+Formula, limiti e collaudo: [center_phase.md](center_phase.md).

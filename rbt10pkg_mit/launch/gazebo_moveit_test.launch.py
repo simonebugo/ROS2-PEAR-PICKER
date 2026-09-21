@@ -28,6 +28,8 @@ def generate_launch_description():
         launch_arguments={
             'enable_ros2_control': 'true',
             'enable_physical_grasp': enable_physical_grasp,
+            'enable_camera': LaunchConfiguration('enable_camera'),
+            'render_engine': LaunchConfiguration('render_engine'),
         }.items(),
     )
 
@@ -51,6 +53,8 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        DeclareLaunchArgument('enable_camera', default_value='false', choices=['true', 'false']),
+        DeclareLaunchArgument('render_engine', default_value='ogre', choices=['ogre', 'ogre2']),
         DeclareLaunchArgument(
             'enable_physical_grasp',
             default_value='false',

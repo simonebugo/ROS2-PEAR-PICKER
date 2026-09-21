@@ -3,6 +3,7 @@
 import time
 import threading
 import math
+import json
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped, Pose, Point, Quaternion
@@ -51,13 +52,26 @@ class PickPlaceManager(Node):
     e la pubblicazione delle pose operative per la traiettoria.
     """
 
-    # Le traiettorie libere di MoveIt, con i limiti di velocita' correnti,
-    # possono durare poco piu' di 30 s. Questo margine evita falsi fallimenti
-    # mentre il controller sta ancora completando un goal valido.
-    EXECUTION_TIMEOUT_S = 60.0
+    # Il trasporto al cestino ha richiesto circa 67 s sul controller Gazebo.
+    # Lasciare margine per la simulazione lenta senza interrompere un goal valido.
+    EXECUTION_TIMEOUT_S = 120.0
 
     def __init__(self):
         super().__init__('pick_place_manager')
+        self.declare_parameter('require_vision_status', False)
+        self.declare_parameter('max_pose_age_s', 5.0)
+        self._require_vision_status = bool(self.get_parameter('require_vision_status').value)
+        self._max_pose_age = float(self.get_parameter('max_pose_age_s').value)
+        if not math.isfinite(self._max_pose_age) or self._max_pose_age <= 0:
+            raise ValueError('max_pose_age_s deve essere positivo e finito.')
+        self.latest_poses = None
+        self._pear_msg = None
+        self._pear_received_at = None
+        self._center_status = {}
+        self._center_status_at = None
+        if self._require_vision_status:
+            self.sub_center_status = self.create_subscription(
+                String, '/orchard/vision/center_status', self.center_status_callback, 10)
 
         # TF2 Buffer and Listener
         self.tf_buffer = tf2_ros.Buffer()
@@ -284,7 +298,11 @@ class PickPlaceManager(Node):
             return False
 
         exec_res_future = exec_handle.get_result_async()
-        self._spin_future(exec_res_future, timeout_sec=self.EXECUTION_TIMEOUT_S)
+        if not self._spin_future(exec_res_future, timeout_sec=self.EXECUTION_TIMEOUT_S):
+            self.get_logger().error(
+                f'Timeout esecuzione MoveIt dopo {self.EXECUTION_TIMEOUT_S:.0f} s; '
+                'il controller potrebbe ancora completare il goal.')
+            return False
         exec_res = exec_res_future.result()
 
         if exec_res and exec_res.result.error_code.val == 1:
@@ -341,7 +359,11 @@ class PickPlaceManager(Node):
             return False
 
         res_future = exec_handle.get_result_async()
-        self._spin_future(res_future, timeout_sec=self.EXECUTION_TIMEOUT_S)
+        if not self._spin_future(res_future, timeout_sec=self.EXECUTION_TIMEOUT_S):
+            self.get_logger().error(
+                f'Timeout esecuzione cartesiana dopo {self.EXECUTION_TIMEOUT_S:.0f} s; '
+                'il controller potrebbe ancora completare il goal.')
+            return False
         exec_result = res_future.result()
         if exec_result and exec_result.result.error_code.val == 1:
             self.get_logger().info("Traiettoria cartesiana eseguita con successo.")
@@ -509,6 +531,12 @@ class PickPlaceManager(Node):
 
     def pear_pose_callback(self, msg: PoseStamped):
         """Trasforma la posa della pera in base_link e calcola pre_grasp, grasp, lift."""
+        self.latest_poses = None
+        self._pear_msg = msg
+        self._pear_received_at = time.monotonic()
+        if not all(math.isfinite(v) for v in (
+                msg.pose.position.x, msg.pose.position.y, msg.pose.position.z)):
+            return
         try:
             transform = self.tf_buffer.lookup_transform(
                 'base_link',
@@ -524,6 +552,8 @@ class PickPlaceManager(Node):
         px = pear_in_base.pose.position.x
         py = pear_in_base.pose.position.y
         pz = pear_in_base.pose.position.z
+        if not all(math.isfinite(v) for v in (px, py, pz)):
+            return
 
         # Angolo di approccio nel piano XY (direzione orizzontale verso la pera)
         approach_yaw = math.atan2(py, px)
@@ -609,14 +639,50 @@ class PickPlaceManager(Node):
         # PER AVVIO AUTOMATICO IMMEDIATO (es. con la telecamera): scommentare la riga sottostante
         # self.start_pick_and_place_sequence(pre_grasp_pose, grasp_pose, lift_pose, pre_place_pose, place_pose, retreat_pose)
 
+    def center_status_callback(self, msg: String):
+        try:
+            status = json.loads(msg.data)
+            self._center_status = status if isinstance(status, dict) else {}
+        except (ValueError, TypeError):
+            self._center_status = {}
+        self._center_status_at = time.monotonic()
+
+    def target_rejection_reason(self):
+        """Four trigger checks: presence, finite coordinates, validity, freshness."""
+        if self._pear_msg is None:
+            return 'posa della pera non ancora disponibile'
+        p = self._pear_msg.pose.position
+        if not all(math.isfinite(v) for v in (p.x, p.y, p.z)):
+            return 'coordinate della pera non finite'
+        if self.latest_poses is None:
+            return 'posa non disponibile in base_link (verificare TF)'
+        stamp = self._pear_msg.header.stamp
+        now = time.monotonic()
+        ages = [now - self._pear_received_at,
+                (self.get_clock().now().nanoseconds -
+                 (stamp.sec * 1_000_000_000 + stamp.nanosec)) / 1e9]
+        if self._require_vision_status:
+            status = self._center_status
+            if (status.get('valid') is not True or
+                    status.get('stamp') != {'sec': stamp.sec, 'nanosec': stamp.nanosec}):
+                return 'center_status non valido per questa misura'
+            try:
+                ages.append(float(status['received_age_s']) + now - self._center_status_at)
+            except (KeyError, TypeError, ValueError):
+                return 'età della misura vision non disponibile'
+        if any(not math.isfinite(age) or age < 0 or age > self._max_pose_age for age in ages):
+            return f'posa scaduta o timestamp non coerente (limite {self._max_pose_age:.1f} s)'
+        return None
+
     def trigger_callback(self, msg: Empty):
         """Chiamato quando l'utente invia il comando manuale di avvio su /harvest/trigger."""
-        if hasattr(self, 'latest_poses') and self.latest_poses is not None:
+        reason = self.target_rejection_reason()
+        if reason is None:
             self.get_logger().info('TRIGGER MANUALE RICEVUTO! Avvio della sequenza in un thread dedicato...')
             thread = threading.Thread(target=self.start_pick_and_place_sequence, args=self.latest_poses)
             thread.start()
         else:
-            self.get_logger().warn('Trigger ricevuto, ma la posa della pera non è ancora disponibile.')
+            self.get_logger().warn(f'Trigger rifiutato: {reason}.')
 
     def start_pick_and_place_sequence(self, pre_g: PoseStamped, grasp: PoseStamped, lift: PoseStamped, pre_p: PoseStamped, place: PoseStamped, retreat: PoseStamped):
         """

@@ -87,6 +87,30 @@ Visualization Manager:
         Reliability Policy: Reliable
         Durability Policy: Volatile
         Depth: 5
+    - Class: rviz_default_plugins/Marker
+      Name: Pear observed surface
+      Enabled: true
+      Topic:
+        Value: /orchard/vision/surface_marker
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+        Depth: 1
+    - Class: rviz_default_plugins/Marker
+      Name: Pear surface world
+      Enabled: true
+      Topic:
+        Value: /orchard/vision/surface_marker_world
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+        Depth: 1
+    - Class: rviz_default_plugins/Marker
+      Name: Pear estimated center
+      Enabled: true
+      Topic:
+        Value: /orchard/vision/center_marker_world
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+        Depth: 1
   Tools:
     - Class: rviz_default_plugins/Interact
     - Class: rviz_default_plugins/MoveCamera
