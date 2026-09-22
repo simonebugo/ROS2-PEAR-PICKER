@@ -34,6 +34,7 @@ def main():
         '/harvest/target_markers', '/harvest/gripper/close_complete', '/planning_scene',
         '/move_action', '/execute_trajectory', '/gripper_controller/follow_joint_trajectory',
         '/compute_cartesian_path', '/compute_ik', '/tf', '/tf_static',
+        '/joint_states', '/get_planning_scene', '/apply_planning_scene',
         '/orchard/vision/surface_point_world', '/orchard/vision/surface_marker_world',
         '/orchard/vision/world_status', '/orchard/vision/center_point_world',
         '/orchard/vision/center_marker_world', '/orchard/vision/center_status',

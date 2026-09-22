@@ -49,6 +49,8 @@ install(FILES
   scripts/pear_segmentation.py
   scripts/pear_depth.py
   scripts/pear_center.py
+  scripts/orchard_randomization.py
+  scripts/trajectory_checks.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -4,8 +4,11 @@ import time
 import threading
 import math
 import json
+import copy
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
+from sensor_msgs.msg import JointState
 from geometry_msgs.msg import PoseStamped, Pose, Point, Quaternion
 from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import String, Empty
@@ -15,7 +18,9 @@ from tf2_geometry_msgs import do_transform_pose_stamped
 from rclpy.action import ActionClient
 from control_msgs.action import FollowJointTrajectory
 from moveit_msgs.action import MoveGroup, ExecuteTrajectory
-from moveit_msgs.srv import GetCartesianPath, GetPositionIK
+from moveit_msgs.srv import GetCartesianPath, GetPositionIK, GetPlanningScene, ApplyPlanningScene
+from moveit_msgs.msg import PlanningSceneComponents, AllowedCollisionEntry
+from trajectory_checks import cartesian_problem
 from moveit_msgs.msg import (
     MotionPlanRequest,
     Constraints,
@@ -120,6 +125,14 @@ class PickPlaceManager(Node):
         self.current_grasp_state = 'UNKNOWN'
         self._grasp_state_condition = threading.Condition()
         self.sequence_executed = False
+        self._sequence_lock = threading.Lock()
+        self._joint_lock = threading.Lock()
+        self._joint_state = None
+        self._joint_received_at = 0.0
+        self._joint_count = 0
+        self._saved_acm = None
+        self.sub_joint_state = self.create_subscription(
+            JointState, '/joint_states', self.joint_state_callback, qos_profile_sensor_data)
 
         self.declare_parameter('gripper_open_position', 0.0)
         self.declare_parameter('gripper_closed_position', 0.015)
@@ -146,6 +159,8 @@ class PickPlaceManager(Node):
         # Service Client per movimento rettilineo e solutore IK
         self._cartesian_client = self.create_client(GetCartesianPath, '/compute_cartesian_path')
         self._ik_client = self.create_client(GetPositionIK, '/compute_ik')
+        self._get_scene_client = self.create_client(GetPlanningScene, '/get_planning_scene')
+        self._apply_scene_client = self.create_client(ApplyPlanningScene, '/apply_planning_scene')
 
         self.get_logger().info('Client MoveIt 2 (/move_action, /execute_trajectory, /compute_cartesian_path, /compute_ik) pronti.')
 
@@ -186,6 +201,92 @@ class PickPlaceManager(Node):
         )
         return None
 
+    def joint_state_callback(self, msg):
+        positions = dict(zip(msg.name, msg.position))
+        if not all(name in positions and math.isfinite(positions[name]) for name in ('j1', 'j2', 'j3', 'j4', 'j5', 'j6')):
+            return
+        with self._joint_lock:
+            self._joint_state = copy.deepcopy(msg)
+            self._joint_received_at = time.monotonic()
+            self._joint_count += 1
+
+    def wait_for_stable_arm(self):
+        """Require fresh, stationary joint samples before planning the next motion."""
+        deadline = time.monotonic() + 8.0
+        reference, since, first_count = None, None, 0
+        while rclpy.ok() and time.monotonic() < deadline:
+            with self._joint_lock:
+                state = copy.deepcopy(self._joint_state)
+                received, count = self._joint_received_at, self._joint_count
+            now = time.monotonic()
+            if state is None or now-received > 1.0:
+                reference = None
+            else:
+                positions = dict(zip(state.name, state.position))
+                q = [positions[f'j{i}'] for i in range(1, 7)]
+                if reference is None or max(abs(a-b) for a, b in zip(q, reference)) > .002:
+                    reference, since, first_count = q, now, count
+                elif now-since >= .4 and count-first_count >= 3:
+                    return state
+            time.sleep(.02)
+        self.get_logger().error('Braccio non fermo o /joint_states non recente: pianificazione interrotta.')
+        return None
+
+    def read_scene(self, components):
+        if not self._get_scene_client.wait_for_service(timeout_sec=3.):
+            return None
+        req = GetPlanningScene.Request()
+        req.components.components = components
+        future = self._get_scene_client.call_async(req)
+        if not self._spin_future(future, timeout_sec=5.):
+            return None
+        return future.result().scene if future.result() else None
+
+    def apply_acm(self, matrix):
+        if not self._apply_scene_client.wait_for_service(timeout_sec=3.):
+            return False
+        req = ApplyPlanningScene.Request()
+        req.scene.is_diff = True
+        req.scene.allowed_collision_matrix = matrix
+        future = self._apply_scene_client.call_async(req)
+        return bool(self._spin_future(future, timeout_sec=5.) and future.result() and future.result().success)
+
+    def allow_fruit_contact(self):
+        scene = self.read_scene(PlanningSceneComponents.ALLOWED_COLLISION_MATRIX)
+        if scene is None:
+            self.get_logger().error('Planning scene non disponibile per il contatto pera-gripper.')
+            return False
+        matrix = scene.allowed_collision_matrix
+        self._saved_acm = copy.deepcopy(matrix)
+        fingers = ['left_finger_link', 'right_finger_link', 'gripper_base_link']
+        for name in ['pear'] + fingers:
+            if name not in matrix.entry_names:
+                matrix.entry_names.append(name)
+                for entry in matrix.entry_values:
+                    entry.enabled.append(False)
+                matrix.entry_values.append(AllowedCollisionEntry(enabled=[False]*len(matrix.entry_names)))
+        pear_index = matrix.entry_names.index('pear')
+        for name in fingers:
+            i = matrix.entry_names.index(name)
+            matrix.entry_values[pear_index].enabled[i] = True
+            matrix.entry_values[i].enabled[pear_index] = True
+        if not self.apply_acm(matrix):
+            self.get_logger().error('Impossibile applicare il contatto pera-gripper; sequenza interrotta.')
+            return False
+        return True
+
+    def wait_for_scene_attachment(self, attached):
+        deadline = time.monotonic()+8.
+        while rclpy.ok() and time.monotonic() < deadline:
+            scene = self.read_scene(PlanningSceneComponents.ROBOT_STATE_ATTACHED_OBJECTS)
+            if scene is not None:
+                objects = [obj for obj in scene.robot_state.attached_collision_objects if obj.object.id == 'pear']
+                if (attached and any(obj.link_name == 'grasp_frame' for obj in objects)) or (not attached and not objects):
+                    return True
+            time.sleep(.1)
+        self.get_logger().error('MoveIt non ha confermato aggiornamento attach/detach della pera.')
+        return False
+
 
     def plan_and_move_to_pose(self, target_pose: PoseStamped) -> bool:
         """
@@ -198,15 +299,20 @@ class PickPlaceManager(Node):
         # Verifica indicativa raggiungibilità
         self.compute_ik_for_pose(target_pose)
 
+        state = self.wait_for_stable_arm()
+        if state is None:
+            return False
+
         self.get_logger().info("Invio Pose Goal a MoveGroup (plan + execute)...")
 
         goal_msg = MoveGroup.Goal()
         goal_msg.request.group_name = 'arm'
         goal_msg.request.allowed_planning_time = 10.0
         goal_msg.request.num_planning_attempts = 10
-        goal_msg.request.max_velocity_scaling_factor = 0.2
-        goal_msg.request.max_acceleration_scaling_factor = 0.2
+        goal_msg.request.max_velocity_scaling_factor = 0.4
+        goal_msg.request.max_acceleration_scaling_factor = 0.4
         goal_msg.request.start_state.is_diff = True
+        goal_msg.request.start_state.joint_state = state
 
         # Invece di vincolare tutti i 6 giunti a una singola soluzione IK rigida,
         # inviamo a MoveGroup una Pose Goal (PositionConstraint + OrientationConstraint).
@@ -218,7 +324,7 @@ class PickPlaceManager(Node):
         # 1. Position Constraint (tolleranza sferica di 2 cm)
         pos_constraint = PositionConstraint()
         pos_constraint.header.stamp = self.get_clock().now().to_msg()
-        pos_constraint.header.frame_id = 'world'
+        pos_constraint.header.frame_id = target_pose.header.frame_id
         pos_constraint.link_name = 'grasp_frame'
 
         bv = BoundingVolume()
@@ -239,7 +345,7 @@ class PickPlaceManager(Node):
         # 2. Orientation Constraint (tolleranza angolare di ~11 gradi)
         orient_constraint = OrientationConstraint()
         orient_constraint.header.stamp = self.get_clock().now().to_msg()
-        orient_constraint.header.frame_id = 'world'
+        orient_constraint.header.frame_id = target_pose.header.frame_id
         orient_constraint.link_name = 'grasp_frame'
         orient_constraint.orientation = target_pose.pose.orientation
         orient_constraint.absolute_x_axis_tolerance = 0.20
@@ -313,7 +419,7 @@ class PickPlaceManager(Node):
             self.get_logger().error(f"Esecuzione traiettoria fallita sul controller! Codice: {code}")
             return False
 
-    def execute_cartesian_path(self, waypoints: list, avoid_collisions: bool = True) -> bool:
+    def execute_cartesian_path(self, waypoints: list) -> bool:
         """
         Calcola ed esegue una traiettoria cartesiana rettilinea passando per i waypoints.
         """
@@ -321,24 +427,36 @@ class PickPlaceManager(Node):
             self.get_logger().error("Servizio /compute_cartesian_path non disponibile!")
             return False
 
+        state = self.wait_for_stable_arm()
+        if state is None:
+            return False
         req = GetCartesianPath.Request()
+        req.start_state.is_diff = True
+        req.start_state.joint_state = state
         req.header.stamp = self.get_clock().now().to_msg()
         req.header.frame_id = 'base_link'
         req.group_name = 'arm'
         req.link_name = 'grasp_frame'
         req.waypoints = waypoints
-        req.max_step = 0.01
-        req.jump_threshold = 0.0
-        req.avoid_collisions = avoid_collisions
+        req.max_step = 0.005
+        req.jump_threshold = 5.0
+        if hasattr(req, 'revolute_jump_threshold'):
+            req.revolute_jump_threshold = 0.35
+        req.avoid_collisions = True
+        req.max_velocity_scaling_factor = 0.4
+        req.max_acceleration_scaling_factor = 0.4
 
         self.get_logger().info(f"Calcolo traiettoria cartesiana per {len(waypoints)} waypoint...")
         future = self._cartesian_client.call_async(req)
         self._spin_future(future, timeout_sec=10.0)
         res = future.result()
 
-        if res is None or res.fraction < 0.5:
-            fraction = res.fraction * 100 if res else 0
-            self.get_logger().warn(f"Traiettoria cartesiana insufficiente ({fraction:.1f}% coperto). Salto.")
+        if res is None:
+            self.get_logger().error('Nessuna risposta al calcolo cartesiano.')
+            return False
+        problem = cartesian_problem(res, state)
+        if problem:
+            self.get_logger().error(problem)
             return False
 
         self.get_logger().info(f"Traiettoria calcolata ({res.fraction * 100:.1f}%). Invio a /execute_trajectory...")
@@ -685,6 +803,20 @@ class PickPlaceManager(Node):
             self.get_logger().warn(f'Trigger rifiutato: {reason}.')
 
     def start_pick_and_place_sequence(self, pre_g: PoseStamped, grasp: PoseStamped, lift: PoseStamped, pre_p: PoseStamped, place: PoseStamped, retreat: PoseStamped):
+        if not self._sequence_lock.acquire(blocking=False):
+            self.get_logger().warn('Sequenza già in corso: trigger ignorato.')
+            return
+        try:
+            self._run_pick_and_place(pre_g, grasp, lift, pre_p, place, retreat)
+        finally:
+            try:
+                if self._saved_acm is not None and not self.apply_acm(self._saved_acm):
+                    self.get_logger().error('Ripristino contatti MoveIt fallito; riavviare prima di un nuovo ciclo.')
+                self._saved_acm = None
+            finally:
+                self._sequence_lock.release()
+
+    def _run_pick_and_place(self, pre_g, grasp, lift, pre_p, place, retreat):
         """
         Esegue l'intera sequenza automatica Pick and Place in 8 fasi.
         """
@@ -699,7 +831,9 @@ class PickPlaceManager(Node):
         # FASE 2: Avvicinamento cartesiano rettilineo sulla pera (grasp).
         # The final approach intentionally permits fingertip-to-pear contact.
         self.get_logger().info("[FASE 2/8] Avvicinamento rettilineo alla pera...")
-        if not self.execute_cartesian_path([grasp.pose], avoid_collisions=False):
+        if not self.allow_fruit_contact():
+            return
+        if not self.execute_cartesian_path([grasp.pose]):
             self.get_logger().error("FASE 2 FALLITA: Traiettoria verso grasp fallita. Sequenza interrotta.")
             return
 
@@ -734,11 +868,9 @@ class PickPlaceManager(Node):
         # retraces the safe horizontal approach; the second raises the pear in
         # the cleared area, away from the trunk and fruit branch.
         self.get_logger().info("[FASE 5/8] Arretramento dal ramo e sollevamento pera...")
-        # The start state intentionally contains the newly grasped pear close
-        # to the fingers and branch.  Permit the known outward escape path;
-        # collision checking resumes for the free-space transport afterwards.
-        if not self.execute_cartesian_path(
-                [pre_g.pose, lift.pose], avoid_collisions=False):
+        if not self.wait_for_scene_attachment(True):
+            return
+        if not self.execute_cartesian_path([pre_g.pose, lift.pose]):
             self.get_logger().error("FASE 5 FALLITA: Arretramento/lift dal ramo fallito. Sequenza interrotta.")
             return
 
@@ -768,6 +900,8 @@ class PickPlaceManager(Node):
         if not require_physical_grasp:
             self.detach_pear_in_moveit()
             time.sleep(0.2)
+        if not self.wait_for_scene_attachment(False):
+            return
         if not self.execute_cartesian_path([retreat.pose]):
             self.get_logger().error("FASE 8 FALLITA: Risalita di sicurezza fallita.")
             return

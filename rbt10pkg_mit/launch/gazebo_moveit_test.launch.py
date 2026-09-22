@@ -10,6 +10,7 @@ from launch.actions import (
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from moveit_configs_utils import MoveItConfigsBuilder
 
 
@@ -30,6 +31,7 @@ def generate_launch_description():
             'enable_physical_grasp': enable_physical_grasp,
             'enable_camera': LaunchConfiguration('enable_camera'),
             'render_engine': LaunchConfiguration('render_engine'),
+            'world_file': LaunchConfiguration('world_file'),
         }.items(),
     )
 
@@ -49,10 +51,13 @@ def generate_launch_description():
         executable='spawn_planning_scene.py',
         name='planning_scene_spawner',
         output='screen',
-        parameters=[{'use_sim_time': True}],
+        parameters=[{'use_sim_time': True,
+                     'scene_config': ParameterValue(LaunchConfiguration('scene_config'), value_type=str)}],
     )
 
     return LaunchDescription([
+        DeclareLaunchArgument('world_file', default_value=os.path.join(rbt08_share, 'worlds', 'orchard.world.sdf')),
+        DeclareLaunchArgument('scene_config', default_value=''),
         DeclareLaunchArgument('enable_camera', default_value='false', choices=['true', 'false']),
         DeclareLaunchArgument('render_engine', default_value='ogre', choices=['ogre', 'ogre2']),
         DeclareLaunchArgument(

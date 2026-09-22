@@ -30,11 +30,12 @@ def generate_launch_description():
         'urdf',
         model,
     ])
-    world_path = PathJoinSubstitution([
+    default_world_path = PathJoinSubstitution([
         package_share,
         'worlds',
         world,
     ])
+    world_path = LaunchConfiguration('world_file')
     clock_bridge_config = os.path.join(
         package_share,
         'config',
@@ -54,6 +55,10 @@ def generate_launch_description():
             'world',
             default_value='orchard.world.sdf',
             description='Gazebo world file from rbt08pkg/worlds.',
+        ),
+        DeclareLaunchArgument(
+            'world_file', default_value=default_world_path,
+            description='Absolute SDF path; defaults to the selected package world.',
         ),
         DeclareLaunchArgument(
             'model',

@@ -26,8 +26,19 @@ def euler_to_quaternion(roll, pitch, yaw):
 
 
 class PlanningSceneSpawner(Node):
+    # Keep the planner this far from the physical branch to account for
+    # controller tracking error during the retreat and lift.
+    BRANCH_CLEARANCE_M = 0.015
+
     def __init__(self):
         super().__init__('planning_scene_spawner')
+        self.declare_parameter('scene_config', '')
+        scenario_path = self.get_parameter('scene_config').value
+        self.scenario = None
+        if scenario_path:
+            from orchard_randomization import load_scenario
+            self.scenario = load_scenario(scenario_path)
+            self.get_logger().info(f'Collision scene from {scenario_path}; seed={self.scenario["seed"]}')
         self.publisher = self.create_publisher(PlanningScene, '/planning_scene', 10)
         self.get_logger().info('Initializing Planning Scene Spawner...')
         # Give publisher time to connect
@@ -47,11 +58,12 @@ class PlanningSceneSpawner(Node):
         ground.operation = CollisionObject.ADD
         box_ground = SolidPrimitive()
         box_ground.type = SolidPrimitive.BOX
-        box_ground.dimensions = [10.0, 10.0, 0.01]
+        # Solid forbidden region below z=0; a thin slab permits IK below it.
+        box_ground.dimensions = [10.0, 10.0, 5.0]
         pose_ground = Pose()
         pose_ground.position.x = 0.0
         pose_ground.position.y = 0.0
-        pose_ground.position.z = -0.005
+        pose_ground.position.z = -2.5
         pose_ground.orientation.w = 1.0
         ground.primitives.append(box_ground)
         ground.primitive_poses.append(pose_ground)
@@ -103,7 +115,7 @@ class PlanningSceneSpawner(Node):
         branch.operation = CollisionObject.ADD
         cyl_branch = SolidPrimitive()
         cyl_branch.type = SolidPrimitive.CYLINDER
-        cyl_branch.dimensions = [0.60, 0.040]  # [height, radius]
+        cyl_branch.dimensions = [0.60, 0.040 + self.BRANCH_CLEARANCE_M]
         pose_branch = Pose()
         pose_branch.position.x = 1.05
         pose_branch.position.y = 0.55
@@ -170,6 +182,20 @@ class PlanningSceneSpawner(Node):
         pear.primitives.append(sphere_pear_neck)
         pear.primitive_poses.append(pose_pear_neck)
         objects.append(pear)
+
+        if self.scenario is not None:
+            values = self.scenario['branch_pose_world']
+            pose_branch.position.x, pose_branch.position.y, pose_branch.position.z = values[:3]
+            q = euler_to_quaternion(*values[3:])
+            pose_branch.orientation.x, pose_branch.orientation.y, pose_branch.orientation.z, pose_branch.orientation.w = q
+            cyl_branch.dimensions = [self.scenario['branch_length'],
+                                     self.scenario['branch_radius'] + self.BRANCH_CLEARANCE_M]
+            branch.primitives = [cyl_branch]
+            branch.primitive_poses = [pose_branch]
+            x, y, z = self.scenario['pear_pose_world'][:3]
+            pose_pear.position.x, pose_pear.position.y, pose_pear.position.z = x, y, z
+            pose_pear_neck.position.x, pose_pear_neck.position.y, pose_pear_neck.position.z = x, y, z+.065
+            pear.primitive_poses = [pose_pear, pose_pear_neck]
 
         scene_msg.world.collision_objects = objects
 

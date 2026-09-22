@@ -60,8 +60,9 @@ planning scene, grasp manager, pipeline visiva e pick-and-place manager.
 La sorgente statica è disabilitata in modalità `vision`.
 Non avviare anche `camera_test.launch.py`, `vision_test.launch.py`,
 `pear_pose_source.py` o un secondo pick-place manager.
-La scena collisioni e le pose del cestino restano quelle dell'orchard attuale:
-questa fase non implementa la randomizzazione del mondo.
+Senza altri argomenti lo scenario resta fisso. La randomizzazione opzionale
+di ramo e pera si abilita con `randomize:=true seed:=42`; vedere `randomization.md`
+per bounds, controllo delle collisioni e verifica della stima camera.
 
 ## Controllo e trigger (terminale 2)
 
@@ -89,6 +90,14 @@ VM può rendere necessario attendere la misura successiva.
 Inviare un solo trigger e attendere la conclusione del ciclo.
 Verificare in Gazebo presa, distacco dal ramo, arretramento e deposito fisico.
 Il preflight non certifica l'esecuzione completa in Gazebo.
+Il manager mantiene attive le collisioni anche durante avvicinamento e lift,
+consentendo solo il contatto pera–dita/base gripper. Attende conferma di
+attach/detach nella scena MoveIt e giunti stabili prima di pianificare.
+I percorsi cartesiani usano scaling 0.2, controllo salti IK e devono essere
+completi; un percorso parziale non viene eseguito. Il terreno MoveIt occupa
+anche il volume sotto quota zero, invece di essere una lastra sottile.
+Se un nuovo seed viene fermato per collisione o salto IK, conservare il log:
+non disattivare le collisioni o aumentare la tolleranza iniziale del controller.
 Il limite di attesa delle traiettorie MoveIt e cartesiane è 120 s: nel test
 precedente il trasporto aveva richiesto circa 67 s, superando il vecchio limite
 di 60 s pur terminando con successo sul controller.
