@@ -41,7 +41,7 @@ def main():
     args = parser.parse_args()
     s = load_scenario(args.scenario)
     world = Path(args.scenario).parent/'orchard.world.sdf'
-    assert hashlib.sha256(world.read_bytes()).hexdigest() == s['generated_world_sha256'], 'SDF modificato dopo generazione'
+    assert hashlib.sha256(world.read_bytes()).hexdigest() == s['generated_world_sha256'], 'SDF modified after generation'
     arm = ArmKinematics(get_package_share_directory('rbt08pkg'))
     rclpy.init(args=[])
     node = Node('randomized_scene_check')
@@ -53,11 +53,11 @@ def main():
 
     def call(client, request):
         if not client.wait_for_service(timeout_sec=10):
-            raise RuntimeError('Servizio MoveIt non disponibile: avviare il launch integrato.')
+            raise RuntimeError('MoveIt service unavailable: start the integrated launch.')
         future = client.call_async(request)
         rclpy.spin_until_future_complete(node, future, timeout_sec=10)
         if not future.done() or future.result() is None:
-            raise RuntimeError('Timeout servizio MoveIt.')
+            raise RuntimeError('MoveIt service timeout.')
         return future.result()
 
     try:
@@ -66,8 +66,8 @@ def main():
         response = call(scene_client, req)
         objects = {obj.id: obj for obj in response.scene.world.collision_objects}
         for name in ('pear', 'fruit_branch'):
-            assert name in objects, f'{name} mancante: eseguire il test prima del grasp'
-            assert objects[name].header.frame_id == 'world', f'Frame collisione inatteso: {name}'
+            assert name in objects, f'{name} missing: run this check before grasping'
+            assert objects[name].header.frame_id == 'world', f'Unexpected collision frame: {name}'
 
         def primitive_world(obj, i):
             base = pose_matrix(obj.pose) if hasattr(obj, 'pose') else np.eye(4)
@@ -100,7 +100,7 @@ def main():
             req.ik_request.avoid_collisions = name in ('pre_grasp', 'lift_mid', 'lift')
             req.ik_request.timeout.sec = 3
             result = call(ik_client, req)
-            assert result.error_code.val == 1, f'MoveIt IK {name} fallita: {result.error_code.val}; non avviare il ciclo per questo seed.'
+            assert result.error_code.val == 1, f'MoveIt IK {name} failed: {result.error_code.val}; do not trigger this seed.'
         print('MOVEIT IK OK: pre/lift collision-aware; approach/grasp kinematic (fruit contact).')
         # Discard points accumulated during the service calls; wait for fresh data.
         points.clear()
@@ -116,15 +116,15 @@ def main():
                     break
             if matched is not None:
                 break
-        assert matched is not None, 'Nessuna coppia recente centro/pear_pose: controllare la pipeline vision.'
+        assert matched is not None, 'No recent center/pear_pose pair: check the vision pipeline.'
         point, pose = matched
         assert point.header.frame_id == 'world'
         xyz = np.array([point.point.x, point.point.y, point.point.z])
         np.testing.assert_allclose(xyz, [pose.pose.position.x, pose.pose.position.y, pose.pose.position.z], atol=1e-9)
         error = np.linalg.norm(xyz-np.array(s['pear_pose_world'][:3]))
-        assert np.isfinite(error) and error <= args.max_center_error, f'Errore centro {error:.4f} m oltre soglia {args.max_center_error} m'
+        assert np.isfinite(error) and error <= args.max_center_error, f'Center error {error:.4f} m exceeds threshold {args.max_center_error} m'
         print(f'VISION OK: centre error={error*1000:.1f} mm. No robot motion commanded.')
-        print('RANDOMIZED PREFLIGHT OK. La traiettoria completa e la presa fisica richiedono ancora il test Gazebo.')
+        print('RANDOMIZED PREFLIGHT OK. The complete trajectory and physical grasp still require a Gazebo test.')
     finally:
         node.destroy_node()
         rclpy.shutdown()

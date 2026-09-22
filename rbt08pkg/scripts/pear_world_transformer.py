@@ -37,9 +37,9 @@ class PearWorldTransformer(Node):
         self._harvest_pub = (self.create_publisher(PoseStamped, '/harvest/pear_pose', 1)
                              if get('publish_harvest_pose') else None)
         if not math.isfinite(self._radius) or self._radius <= 0:
-            raise ValueError('fruit_radius_m deve essere positivo e finito.')
+            raise ValueError('fruit_radius_m must be positive and finite.')
         if not self._source or not self._target or not math.isfinite(self._timeout) or self._timeout <= 0:
-            raise ValueError('Frame e timeout non validi.')
+            raise ValueError('Invalid frame or timeout.')
         # This lookup only depends on the static world -> fixed-camera chain.
         # Do not bind the TF buffer clock to Gazebo: at startup Gazebo can jump
         # simulated time backwards after robot_state_publisher has already sent
@@ -82,13 +82,13 @@ class PearWorldTransformer(Node):
     def _source_marker(self, marker):
         if marker.ns == 'pear_surface' and marker.id == 0 and marker.action == Marker.DELETE:
             self._pending = None
-            self._invalidate('SOURCE_INVALID', 'La stima camera ha eliminato il punto.')
+            self._invalidate('SOURCE_INVALID', 'The camera estimator invalidated the point.')
 
     def _receive(self, point):
         self._pending = None
         if point.header.frame_id != self._source or not all(
                 math.isfinite(v) for v in (point.point.x, point.point.y, point.point.z)):
-            self._invalidate('INVALID_POINT', 'Frame o coordinate sorgente non validi.')
+            self._invalidate('INVALID_POINT', 'Invalid source frame or coordinates.')
             return
         self._pending, self._received_at = point, time.monotonic()
         self._retry()
@@ -97,7 +97,7 @@ class PearWorldTransformer(Node):
         if self._received_at is not None and time.monotonic() - self._received_at > self._timeout:
             self._pending = None
             if self._state != 'STREAM_TIMEOUT':
-                self._invalidate('STREAM_TIMEOUT', 'Nessun punto camera recente.')
+                self._invalidate('STREAM_TIMEOUT', 'No recent camera point.')
             return
         if self._pending is None:
             return
@@ -114,7 +114,7 @@ class PearWorldTransformer(Node):
         result.header.stamp = point.header.stamp
         if not all(math.isfinite(v) for v in (result.point.x, result.point.y, result.point.z)):
             self._pending = None
-            self._invalidate('INVALID_TF', 'Coordinate trasformate non finite.')
+            self._invalidate('INVALID_TF', 'Transformed coordinates are nonfinite.')
             return
         self._point_pub.publish(result)
         marker = Marker()

@@ -1,5 +1,0 @@
-# Archivio YOLO: non installare per la pipeline HSV.
-# PyTorch is resolved by Ultralytics so it can match the host CPU/GPU setup.
-ultralytics==8.4.154
-numpy==1.26.4
-opencv-python==4.10.0.84

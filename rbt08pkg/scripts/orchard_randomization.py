@@ -61,9 +61,9 @@ class ArmKinematics:
         self.chain = self.path('grasp_frame')
         moving = [j for j in self.chain if j.get('type') != 'fixed']
         if [j.get('name') for j in moving] != ['j1', 'j2', 'j3', 'j4', 'j5', 'j6']:
-            raise ValueError('Catena world -> grasp_frame diversa da j1..j6.')
+            raise ValueError('The world -> grasp_frame chain must contain j1..j6.')
         if any(j.get('type') != 'revolute' for j in moving):
-            raise ValueError('Il filtro IK richiede giunti revolute con limiti.')
+            raise ValueError('The IK filter requires bounded revolute joints.')
         self.names = [j.get('name') for j in moving]
         self.lower = np.array([float(j.find('limit').get('lower')) for j in moving])
         self.upper = np.array([float(j.find('limit').get('upper')) for j in moving])
@@ -79,7 +79,7 @@ class ArmKinematics:
         chain, seen = [], set()
         while tip != 'world':
             if tip in seen or tip not in self.by_child:
-                raise ValueError(f'Catena URDF incompleta per {tip}.')
+                raise ValueError(f'Incomplete URDF chain for {tip}.')
             seen.add(tip)
             joint = self.by_child[tip]
             chain.append(joint)
@@ -90,7 +90,7 @@ class ArmKinematics:
         t = np.eye(4)
         for j in self.path(tip):
             if j.get('type') != 'fixed':
-                raise ValueError(f'{tip} non è fisso rispetto a world.')
+                raise ValueError(f'{tip} is not fixed relative to world.')
             t = t @ origin(j)
         return t
 
@@ -142,22 +142,22 @@ def load_bounds(path):
     expected = {'branch_height_m', 'branch_yaw_deg', 'branch_elevation_deg', 'pear_distance_m',
                 'max_attempts', 'image_margin_px', 'min_body_diameter_px'}
     if set(data) != expected:
-        raise ValueError(f'Chiavi bounds attese: {sorted(expected)}')
+        raise ValueError(f'Expected bounds keys: {sorted(expected)}')
     for name in ('branch_height_m', 'branch_yaw_deg', 'branch_elevation_deg', 'pear_distance_m'):
         bounds = data[name]
         if (not isinstance(bounds, list) or len(bounds) != 2 or
                 not all(isinstance(v, (float, int)) and math.isfinite(v) for v in bounds) or bounds[0] > bounds[1]):
-            raise ValueError(f'Bounds non validi: {name}')
+            raise ValueError(f'Invalid bounds: {name}')
     if type(data['max_attempts']) is not int or not 1 <= data['max_attempts'] <= 1000:
-        raise ValueError('max_attempts deve essere tra 1 e 1000.')
+        raise ValueError('max_attempts must be between 1 and 1000.')
     if not (0 < data['branch_height_m'][0] and 0 < data['pear_distance_m'][0]):
-        raise ValueError('Altezza e distanza devono essere positive.')
+        raise ValueError('Height and distance must be positive.')
     if not (-80 <= data['branch_yaw_deg'][0] <= data['branch_yaw_deg'][1] <= 80 and
             -30 <= data['branch_elevation_deg'][0] <= data['branch_elevation_deg'][1] <= 30):
-        raise ValueError('Angoli fuori dall’emisfero anteriore supportato (yaw ±80°, inclinazione ±30°).')
+        raise ValueError('Angles outside the supported front hemisphere (yaw +/-80 deg, elevation +/-30 deg).')
     for key in ('image_margin_px', 'min_body_diameter_px'):
         if not isinstance(data[key], (float, int)) or not math.isfinite(data[key]) or data[key] < 0:
-            raise ValueError(f'{key} non valido.')
+            raise ValueError(f'{key} is invalid.')
     return data
 
 
@@ -188,13 +188,13 @@ def generate_scenario(share, bounds_file, seed):
     tree = sdf.find(".//model[@name='pear_tree']")
     tree_pose = numbers(tree.findtext('pose'))
     if any(abs(v) > 1e-9 for v in tree_pose[3:]):
-        raise ValueError('Il generatore attuale richiede un tronco verticale senza rotazione.')
+        raise ValueError('The generator requires an upright, unrotated trunk.')
     branch = tree.find("link/collision[@name='fruit_branch_collision']")
     length = float(branch.findtext('geometry/cylinder/length'))
     branch_radius = float(branch.findtext('geometry/cylinder/radius'))
     pear_radius = float(sdf.findtext(".//model[@name='pear']/link/collision[@name='pear_body_collision']/geometry/sphere/radius"))
     if config['pear_distance_m'][1] > length-.02:
-        raise ValueError('pear_distance_m supera la lunghezza utile del ramo.')
+        raise ValueError('pear_distance_m exceeds the usable branch length.')
     arm, rng, rejected = ArmKinematics(share), random.Random(seed), {}
     for attempt in range(1, config['max_attempts']+1):
         sampled = {name: rng.uniform(*config[name]) for name in (
@@ -231,19 +231,19 @@ def generate_scenario(share, bounds_file, seed):
                 'screening': 'numeric joint-limit IK and camera frustum; not collision-free path certification',
                 'input_sha256': {str(p.relative_to(share)): hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs},
             }
-    raise RuntimeError(f'Nessuno scenario valido dopo {config["max_attempts"]} tentativi; seed={seed}, scarti={rejected}.')
+    raise RuntimeError(f'No valid scenario after {config["max_attempts"]} attempts; seed={seed}, rejected={rejected}.')
 
 
 def load_scenario(path):
     data = json.loads(Path(path).read_text(encoding='utf-8'))
     if data.get('version') != 1:
-        raise ValueError('Versione scenario non supportata.')
+        raise ValueError('Unsupported scenario version.')
     for key in ('branch_pose_world', 'branch_pose_tree', 'pear_pose_world'):
         if len(data[key]) != 6 or not all(math.isfinite(v) for v in data[key]):
-            raise ValueError(f'Posa scenario non valida: {key}')
+            raise ValueError(f'Invalid scenario pose: {key}')
     for key in ('branch_length', 'branch_radius'):
         if not math.isfinite(data[key]) or data[key] <= 0:
-            raise ValueError(f'Dimensione scenario non valida: {key}')
+            raise ValueError(f'Invalid scenario dimension: {key}')
     return data
 
 

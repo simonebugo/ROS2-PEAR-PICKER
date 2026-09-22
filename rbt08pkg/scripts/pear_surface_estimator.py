@@ -41,7 +41,7 @@ class PearSurfaceEstimator(Node):
         self._config.validate()
         self._timeout, self._queue_size = value('stream_timeout_s'), value('queue_size')
         if not math.isfinite(self._timeout) or self._timeout <= 0 or self._queue_size < 1:
-            raise ValueError('Timeout e queue_size devono essere positivi.')
+            raise ValueError('Timeout and queue_size must be positive.')
         self._frame = value('camera_frame')
         self._queues = {'mask': OrderedDict(), 'depth': OrderedDict()}
         self._stamps = {}
@@ -64,7 +64,7 @@ class PearSurfaceEstimator(Node):
         ]
         self._watchdog_clock = Clock(clock_type=ClockType.STEADY_TIME)
         self._timer = self.create_timer(1.0, self._report, clock=self._watchdog_clock)
-        self.get_logger().info('Stima superficie 3D pronta: sincronizzazione esatta mask/depth, frame camera.')
+        self.get_logger().info('3D surface estimator ready: exact mask/depth synchronization in the camera frame.')
 
     def _receive_info(self, message):
         self._info = message
@@ -123,18 +123,18 @@ class PearSurfaceEstimator(Node):
         try:
             info = self._info
             if info.header.frame_id != self._frame:
-                raise ValueError('CameraInfo nel frame errato.')
+                raise ValueError('CameraInfo has an incorrect frame.')
             if mask_msg.encoding != 'mono8' or depth_msg.encoding != '32FC1':
-                raise ValueError('Attesi mask mono8 e depth 32FC1 (metri).')
+                raise ValueError('Expected mono8 mask and 32FC1 depth in metres.')
             # Current Gazebo stream is undistorted. Reject incompatible raw
             # calibration rather than silently using pinhole formulas on it.
             if (info.distortion_model != 'plumb_bob' or
                     any(not math.isfinite(v) or abs(v) > 1e-10 for v in info.d)):
-                raise ValueError('Richieste immagini senza distorsione; rettificare una futura camera reale.')
+                raise ValueError('Undistorted images required; rectify real-camera images before processing.')
             if not all(math.isfinite(v) for v in info.k) or abs(info.k[8] - 1) > 1e-8:
-                raise ValueError('Matrice K non valida.')
+                raise ValueError('Invalid K matrix.')
             if any(abs(info.k[i]) > 1e-8 for i in (1, 3, 6, 7)):
-                raise ValueError('K non compatibile con il modello pinhole senza skew.')
+                raise ValueError('K is incompatible with a zero-skew pinhole model.')
             camera = Intrinsics(info.width, info.height, info.k[0], info.k[4], info.k[2], info.k[5])
             mask = self._bridge.imgmsg_to_cv2(mask_msg, desired_encoding='passthrough')
             depth = self._bridge.imgmsg_to_cv2(depth_msg, desired_encoding='passthrough')
@@ -164,9 +164,9 @@ class PearSurfaceEstimator(Node):
                 if now - received_at > self._timeout:
                     del queue[key]
         if pair_age is not None and pair_age > self._timeout:
-            self._invalidate('STREAM_TIMEOUT', 'Nessuna coppia esatta recente.')
+            self._invalidate('STREAM_TIMEOUT', 'No recent exact timestamp pair.')
         elif self._state == 'VALID' and age is not None and age > self._timeout:
-            self._invalidate('STREAM_TIMEOUT', 'Nessuna stima valida recente.')
+            self._invalidate('STREAM_TIMEOUT', 'No recent valid estimate.')
         self._status_pub.publish(String(data=json.dumps({
             'state': self._state, 'valid': self._state == 'VALID', 'reason': self._reason,
             'paired_frames': self._pairs, 'valid_age_s': None if age is None else round(age, 3),

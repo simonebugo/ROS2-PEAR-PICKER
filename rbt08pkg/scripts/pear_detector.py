@@ -43,7 +43,7 @@ class PearDetector(Node):
         self._validate_timeout(self.get_parameter('stream_timeout_s').value)
         rate = self.get_parameter('max_rate_hz').value
         if not math.isfinite(rate) or rate <= 0:
-            raise ValueError('max_rate_hz deve essere finito e positivo.')
+            raise ValueError('max_rate_hz must be finite and positive.')
         self.add_on_set_parameters_callback(self._validate_parameters)
         cv2.setNumThreads(1)
         self._bridge = CvBridge()
@@ -70,8 +70,8 @@ class PearDetector(Node):
         self._timer = self.create_timer(1.0 / rate, self._process, clock=self._wall_clock)
         self._watchdog = self.create_timer(1.0, self._report_status, clock=self._wall_clock)
         self.get_logger().info(
-            f'Segmentazione HSV pronta: attendo {topic("rgb_topic")}; '
-            'soglie modificabili con parametri ROS, nessun peso o venv richiesto.')
+            f'HSV segmentation ready; waiting for {topic("rgb_topic")}; '
+            'thresholds are ROS parameters; no model weights or venv required.')
 
     def _config(self, overrides=None):
         values = {name: self.get_parameter(name).value for name in asdict(SegmentationConfig())}
@@ -81,7 +81,7 @@ class PearDetector(Node):
     @staticmethod
     def _validate_timeout(value):
         if not math.isfinite(value) or value <= 0:
-            raise ValueError('stream_timeout_s deve essere finito e positivo.')
+            raise ValueError('stream_timeout_s must be finite and positive.')
 
     def _validate_parameters(self, parameters):
         overrides = {p.name: p.value for p in parameters if p.name in asdict(SegmentationConfig())}
@@ -155,7 +155,7 @@ class PearDetector(Node):
             self._error = None
         except Exception as error:
             if str(error) != self._error:
-                self.get_logger().error(f'Segmentazione fallita: {error}')
+                self.get_logger().error(f'Segmentation failed: {error}')
             self._error = str(error)
             self._state = 'ERROR'
             self._clear_target(message.header)
@@ -169,7 +169,7 @@ class PearDetector(Node):
             self._state = 'STREAM_TIMEOUT'
             self._latest = None
             self._clear_target(self._last_message.header)
-            self.get_logger().warning('RGB fermo: target invalidato, attendo nuove immagini.')
+            self.get_logger().warning('RGB stream stopped: target invalidated; waiting for new images.')
         self._status.publish(String(data=json.dumps({
             'method': 'hsv', 'state': self._state,
             'ready': self._state in ('DETECTED', 'NO_TARGET'),

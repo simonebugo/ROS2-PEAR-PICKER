@@ -65,7 +65,7 @@ class SurfaceTests(unittest.TestCase):
 
     def test_depth_discontinuity_rejected(self):
         self.depth[:, :65] = 2.0
-        with self.assertRaisesRegex(InvalidDepth, 'incoerente'):
+        with self.assertRaisesRegex(InvalidDepth, 'Inconsistent'):
             self.estimate()
 
     def test_shapes_and_types(self):

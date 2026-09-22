@@ -24,30 +24,30 @@ def validate_streams(messages, expected_frame):
     for name in ('rgb', 'depth', 'info'):
         msg = messages.get(name)
         if msg is None:
-            errors.append(f'{name}: nessun messaggio')
+            errors.append(f'{name}: no message')
             continue
         if msg.header.frame_id != expected_frame:
-            errors.append(f'{name}: frame inatteso {msg.header.frame_id!r}')
+            errors.append(f'{name}: unexpected frame {msg.header.frame_id!r}')
         if msg.width <= 0 or msg.height <= 0:
-            errors.append(f'{name}: dimensioni non valide')
+            errors.append(f'{name}: invalid dimensions')
 
     for name, encoding, bytes_per_pixel in (('rgb', 'rgb8', 3), ('depth', '32FC1', 4)):
         msg = messages.get(name)
         if msg is not None:
             if msg.encoding != encoding:
-                errors.append(f'{name}: encoding {msg.encoding!r}, atteso {encoding}')
+                errors.append(f'{name}: encoding {msg.encoding!r}, expected {encoding}')
             if msg.step < msg.width * bytes_per_pixel or len(msg.data) < msg.height * msg.step:
-                errors.append(f'{name}: buffer immagine incompleto')
+                errors.append(f'{name}: incomplete image buffer')
 
     info = messages.get('info')
     if info is not None:
         if (len(info.k) != 9 or not all(math.isfinite(x) for x in info.k)
                 or info.k[0] <= 0 or info.k[4] <= 0):
-            errors.append('info: intrinseci K non validi')
+            errors.append('info: invalid K intrinsics')
         for name in ('rgb', 'depth'):
             msg = messages.get(name)
             if msg is not None and (msg.width, msg.height) != (info.width, info.height):
-                errors.append(f'{name}: dimensioni diverse da CameraInfo')
+                errors.append(f'{name}: dimensions differ from CameraInfo')
     return errors
 
 
@@ -100,19 +100,19 @@ class CameraPipelineCheck(Node):
         now = time.monotonic()
         for name, last in self._received_at.items():
             if now - last > timeout:
-                errors.append(f'{name}: flusso fermo da oltre {timeout:g} s reali')
+                errors.append(f'{name}: stream stopped for over {timeout:g} wall seconds')
         for name, topic in self.TOPICS.items():
             if len(self.get_publishers_info_by_topic(topic)) > 1:
-                errors.append(f'{name}: publisher multipli, controllare i launch attivi')
+                errors.append(f'{name}: multiple publishers; check active launches')
 
         paired = set(self._stamps['rgb']) & set(self._stamps['depth'])
         if 'rgb' in self._messages and 'depth' in self._messages and not paired:
-            errors.append('RGB/depth: nessuna coppia con lo stesso timestamp negli ultimi 30 frame')
+            errors.append('RGB/depth: no matching timestamp pair in the last 30 frames')
         try:
             transform = self._buffer.lookup_transform(target_frame, camera_frame, Time())
             self._publish_axis(transform, target_frame, camera_frame)
         except TransformException:
-            errors.append(f'TF {target_frame} <- {camera_frame} non disponibile')
+            errors.append(f'TF {target_frame} <- {camera_frame} unavailable')
 
         self._status_pub.publish(String(data=json.dumps({
             'ready': not errors, 'errors': errors, 'paired_frames': len(paired),
@@ -120,9 +120,9 @@ class CameraPipelineCheck(Node):
         }, ensure_ascii=False)))
         if tuple(errors) != self._last_errors:
             if errors:
-                self.get_logger().warning('Camera non pronta: ' + '; '.join(errors))
+                self.get_logger().warning('Camera not ready: ' + '; '.join(errors))
             else:
-                self.get_logger().info('CAMERA READY: RGB, depth, CameraInfo, timestamp e TF coerenti.')
+                self.get_logger().info('CAMERA READY: RGB, depth, CameraInfo, timestamps and TF are consistent.')
             self._last_errors = tuple(errors)
 
     def _publish_axis(self, transform, target_frame, camera_frame):

@@ -14,15 +14,12 @@ from std_msgs.msg import Empty, String
 
 
 class GraspManager(Node):
-    """Attach a pear only after a two-finger grasp, then release it safely."""
+    """Transfer the pear from tree to gripper after contact or close confirmation."""
 
     # Contact messages from the two independent sensors do not necessarily
     # arrive in the same Gazebo update, especially on a loaded VM.
     CONTACT_TIMEOUT_S = 1.0
-    # With the current geometry fingertip contact starts around 12 mm of
-    # inward travel. We accept the grasp just before that nominal value and
-    # reserve a much smaller threshold for a genuinely open gripper.
-    CLOSED_POSITION_M = 0.008
+    # Release once both fingers have returned near the open position.
     OPEN_POSITION_M = 0.003
 
     def __init__(self) -> None:
@@ -174,12 +171,6 @@ class GraspManager(Node):
             and self._right_contact_at is not None
             and now - self._left_contact_at <= self.CONTACT_TIMEOUT_S
             and now - self._right_contact_at <= self.CONTACT_TIMEOUT_S
-        )
-
-    def _gripper_is_closed(self) -> bool:
-        return all(
-            position >= self.CLOSED_POSITION_M
-            for position in self._finger_positions.values()
         )
 
     def _gripper_is_open(self) -> bool:

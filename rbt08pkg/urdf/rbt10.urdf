@@ -5,7 +5,6 @@
 <xacro:arg name="enable_physical_grasp" default="true"/>
 <xacro:arg name="enable_camera" default="false"/>
 
-<!-- questo è un commento -->
 <xacro:include filename="$(find rbt08pkg)/urdf/rbt10.gazebo"/>
 <xacro:include filename="$(find rbt08pkg)/urdf/gripper.urdf.xacro"/>
 
@@ -17,8 +16,6 @@
     <visual>
         <origin xyz="0 0 0" rpy="0 0 0"/>
         <geometry>
-            <!--mesh filename="file://$(find rbt08pkg)/meshes/Exe070101Prt.dae"/-->
-            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070101Prt.dae"/-->
             <mesh filename="package://rbt08pkg/meshes/Exe070101Prt.dae"/>
         </geometry>
     </visual>
@@ -26,8 +23,6 @@
     <collision>
         <origin xyz="0 0 0" rpy="0 0 0"/>
         <geometry>
-            <!--mesh filename="file://$(find rbt08pkg)/meshes/Exe070101Prt.dae"/-->
-            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070101Prt.dae"/-->
             <mesh filename="package://rbt08pkg/meshes/Exe070101Prt.dae"/>
         </geometry>
     </collision>
@@ -43,8 +38,6 @@
     <visual>
         <origin xyz="0 0 0" rpy="0 0 0"/>
         <geometry>
-            <!--mesh filename="file://$(find rbt08pkg)/meshes/Exe070102Prt.dae"/-->
-            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070102Prt.dae"/-->
             <mesh filename="package://rbt08pkg/meshes/Exe070102Prt.dae"/>
         </geometry>
     </visual>
@@ -52,8 +45,6 @@
     <collision>
         <origin xyz="0 0 0" rpy="0 0 0"/>
         <geometry>
-            <!--mesh filename="file://$(find rbt08pkg)/meshes/Exe070102Prt.dae"/-->
-            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070102Prt.dae"/-->
             <mesh filename="package://rbt08pkg/meshes/Exe070102Prt.dae"/>
         </geometry>
     </collision>
@@ -70,8 +61,6 @@
     <visual>
         <origin xyz="0 0 0" rpy="3.1416 0 0"/>
         <geometry>
-            <!--mesh filename="file://$(find rbt08pkg)/meshes/Exe070103Prt.dae"/-->
-            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070103Prt.dae"/-->
             <mesh filename="package://rbt08pkg/meshes/Exe070103Prt.dae"/>
         </geometry>
     </visual>
@@ -79,8 +68,6 @@
     <collision>
         <origin xyz="0 0 0" rpy="3.1416 0 0"/>
         <geometry>
-            <!--mesh filename="file://$(find rbt08pkg)/meshes/Exe070103Prt.dae"/-->
-            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070103Prt.dae"/-->
             <mesh filename="package://rbt08pkg/meshes/Exe070103Prt.dae"/>
         </geometry>
     </collision>
@@ -96,10 +83,7 @@
 <link name="link3">
     <visual>
         <origin xyz="0 0 0" rpy="1.5707 0 1.5707"/>
-        <!--origin xyz="0 0 0" rpy="0 0 0"/-->
         <geometry>
-            <!--mesh filename="file://$(find rbt08pkg)/meshes/Exe070104Prt.dae"/-->
-            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070104Prt.dae"/-->
             <mesh filename="package://rbt08pkg/meshes/Exe070104Prt.dae"/>
         </geometry>
     </visual>
@@ -107,8 +91,6 @@
     <collision>
         <origin xyz="0 0 0" rpy="1.5707 0 1.5707"/>
         <geometry>
-            <!--mesh filename="file://$(find rbt08pkg)/meshes/Exe070104Prt.dae"/-->
-            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070104Prt.dae"/-->
             <mesh filename="package://rbt08pkg/meshes/Exe070104Prt.dae"/>
         </geometry>
     </collision>
@@ -125,8 +107,6 @@
     <visual>
         <origin xyz="0 0 0" rpy="0 -1.5707 3.1416"/>
         <geometry>
-            <!--mesh filename="file://$(find rbt08pkg)/meshes/Exe070105Prt.dae"/-->
-            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070105Prt.dae"/-->
             <mesh filename="package://rbt08pkg/meshes/Exe070105Prt.dae"/>
         </geometry>
     </visual>
@@ -134,8 +114,6 @@
     <collision>
         <origin xyz="0 0 0" rpy="0 -1.5707 3.1416"/>
         <geometry>
-            <!--mesh filename="file://$(find rbt08pkg)/meshes/Exe070105Prt.dae"/-->
-            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070105Prt.dae"/-->
             <mesh filename="package://rbt08pkg/meshes/Exe070105Prt.dae"/>
         </geometry>
     </collision>
@@ -152,8 +130,6 @@
     <visual>
         <origin xyz="0 0 0" rpy="-1.5707 0 0"/>
         <geometry>
-            <!--mesh filename="file://$(find rbt08pkg)/meshes/Exe070106Prt.dae"/-->
-            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070106Prt.dae"/-->
             <mesh filename="package://rbt08pkg/meshes/Exe070106Prt.dae"/>
         </geometry>
     </visual>
@@ -161,8 +137,6 @@
     <collision>
         <origin xyz="0 0 0" rpy="-1.5707 0 0"/>
         <geometry>
-            <!--mesh filename="file://$(find rbt08pkg)/meshes/Exe070106Prt.dae"/-->
-            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070106Prt.dae"/-->
             <mesh filename="package://rbt08pkg/meshes/Exe070106Prt.dae"/>
         </geometry>
     </collision>
@@ -179,8 +153,6 @@
     <visual>
         <origin xyz="0 0 0" rpy="0 0 0"/>
         <geometry>
-            <!--mesh filename="file://$(find rbt08pkg)/meshes/Exe070107Prt.dae"/-->
-            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070107Prt.dae"/-->
             <mesh filename="package://rbt08pkg/meshes/Exe070107Prt.dae"/>
         </geometry>
     </visual>
@@ -188,8 +160,6 @@
     <collision>
         <origin xyz="0 0 0" rpy="0 0 0"/>
         <geometry>
-            <!--mesh filename="file://$(find rbt08pkg)/meshes/Exe070107Prt.dae"/-->
-            <!--mesh filename="$(find rbt08pkg)/meshes/Exe070107Prt.dae"/-->
             <mesh filename="package://rbt08pkg/meshes/Exe070107Prt.dae"/>
         </geometry>
     </collision>
@@ -256,7 +226,7 @@
     <origin rpy="1.5707 0 0" xyz="0.2 -0.18 0"/>
 </joint>
 
-<!-- STEP 12 - Table camera -->
+<!-- Fixed RGB-D camera -->
 <joint type="fixed" name="table_camera_joint">
     <!-- Rear/raised view: +X points at the pear, above the initial arm silhouette. -->
     <origin xyz="0.15 -0.55 1.75" rpy="0 0.3323335118 1.0040671093"/>

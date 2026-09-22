@@ -82,9 +82,9 @@ def main():
              and node._center_pub.get_subscription_count()
              and node._center_marker_pub.get_subscription_count()
              and clock_pub.get_subscription_count() >= 2,
-             'Discovery DDS fallita')
+             'DDS discovery failed')
         point_pub.publish(point(100))
-        wait(lambda: node._state == 'WAITING_TF', 'TF mancante non rilevato')
+        wait(lambda: node._state == 'WAITING_TF', 'Missing TF was not detected')
         assert not points
         tf = TransformStamped()
         tf.header.frame_id, tf.child_frame_id = target, source
@@ -92,14 +92,14 @@ def main():
         tf.transform.rotation.z = tf.transform.rotation.w = math.sqrt(.5)
 
         broadcaster.sendTransform(tf)
-        wait(lambda: bool(points), 'Nessuna trasformazione dopo arrivo TF')
+        wait(lambda: bool(points), 'No transformed point after TF arrived')
         p = points[-1]
         assert p.header.frame_id == target and p.header.stamp.sec == 100 and p.header.stamp.nanosec == 123
         assert all(abs(a-b) < 1e-9 for a, b in zip((p.point.x, p.point.y, p.point.z), (8., 21., 33.)))
-        wait(lambda: bool(centers), 'Centro non pubblicato')
+        wait(lambda: bool(centers), 'Center was not published')
         center = centers[-1]
         expected = (8. - .15/math.sqrt(14), 21. + .075/math.sqrt(14), 33. + .225/math.sqrt(14))
-        assert center.header == p.header, 'Timestamp o frame centro non conservato'
+        assert center.header == p.header, 'Center timestamp or frame was not preserved'
         assert all(abs(a-b) < 1e-9 for a, b in zip(
             (center.point.x, center.point.y, center.point.z), expected)), 'Centro geometrico errato'
 
@@ -109,32 +109,32 @@ def main():
         clock.clock.sec = 20
         clock_pub.publish(clock)
         wait(lambda: node.get_clock().now().nanoseconds == 20_000_000_000,
-             'Clock simulato non attivato')
+             'Simulation clock was not activated')
         clock.clock.sec = 1
         clock_pub.publish(clock)
         wait(lambda: node.get_clock().now().nanoseconds == 1_000_000_000,
-             'Reset del clock simulato non ricevuto')
+             'Simulation clock reset was not received')
         count = len(points)
         point_pub.publish(point(101))
-        wait(lambda: len(points) > count, 'TF statica persa dopo reset di /clock')
+        wait(lambda: len(points) > count, 'Static TF lost after /clock reset')
 
-        wait(lambda: node._state == 'STREAM_TIMEOUT', 'Watchdog fallito')
-        wait(lambda: markers and markers[-1].action == Marker.DELETE, 'Marker scaduto non eliminato')
+        wait(lambda: node._state == 'STREAM_TIMEOUT', 'Watchdog failed')
+        wait(lambda: markers and markers[-1].action == Marker.DELETE, 'Expired marker was not deleted')
         wait(lambda: center_markers and center_markers[-1].action == Marker.DELETE,
-             'Marker centro scaduto non eliminato')
+             'Expired center marker was not deleted')
         count = len(points)
         point_pub.publish(point(102))
-        wait(lambda: len(points) > count, 'Recupero fallito')
+        wait(lambda: len(points) > count, 'Recovery failed')
         deleted = Marker()
         deleted.ns, deleted.id, deleted.action = 'pear_surface', 0, Marker.DELETE
         marker_pub.publish(deleted)
-        wait(lambda: node._state == 'SOURCE_INVALID', 'Invalidazione sorgente non propagata')
-        assert node._center_result is None, 'Centro residuo dopo invalidazione'
+        wait(lambda: node._state == 'SOURCE_INVALID', 'Source invalidation was not propagated')
+        assert node._center_result is None, 'Center remained after invalidation'
         bad = point(103)
         bad.header.frame_id = 'wrong'
         point_pub.publish(bad)
-        wait(lambda: node._state == 'INVALID_POINT', 'Frame errato non rifiutato')
-        print('WORLD PREFLIGHT OK: TF, centro stimato, timestamp, reset clock, timeout, recupero, invalidazione.')
+        wait(lambda: node._state == 'INVALID_POINT', 'Incorrect frame was not rejected')
+        print('WORLD PREFLIGHT OK: TF, estimated center, timestamp, clock reset, timeout, recovery, invalidation.')
     finally:
         executor.shutdown()
         node.destroy_node()

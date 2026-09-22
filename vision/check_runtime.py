@@ -29,7 +29,7 @@ def require(condition, explanation):
 
 def main():
     print(f'OpenCV {cv2.__version__}; NumPy {np.__version__}; ROS import OK')
-    print(f'Moduli verificati: {MODULE_PATH}')
+    print(f'Verified modules: {MODULE_PATH}')
     namespace = f'/hsv_selftest_{os.getpid()}'
     args = ['--ros-args', '-r', f'__ns:={namespace}',
             '-p', 'use_sim_time:=false', '-p', 'stream_timeout_s:=0.6']
@@ -89,34 +89,34 @@ def main():
         def all_matching(message):
             return all(matching(key, message) for key in ('detections', 'annotated', 'mask', 'target_mask'))
 
-        wait_for(lambda: all_matching(source), 'frame positivo e header', source)
+        wait_for(lambda: all_matching(source), 'positive frame and header', source)
         detection_array = received['detections']
-        require(len(detection_array.detections) == 1, 'Attesa una detection per il frutto giallo.')
+        require(len(detection_array.detections) == 1, 'Expected one detection for the yellow fruit.')
         detection = detection_array.detections[0]
-        require(detection.header == source.header, 'Header della singola detection alterato.')
-        require(abs(detection.bbox.center.position.x - 160) < 2, 'Centro bbox errato.')
-        require(detection.results[0].hypothesis.class_id == 'pear', 'Classe inattesa.')
-        require(received['annotated'].encoding == 'bgr8', 'Encoding overlay errato.')
-        require(received['target_mask'].encoding == 'mono8', 'Encoding maschera errato.')
-        require(np.count_nonzero(bridge.imgmsg_to_cv2(received['target_mask'])) > 0, 'Maschera vuota.')
-        print('OK: RGB->BGR, detection, maschere, overlay, timestamp e frame originali.')
+        require(detection.header == source.header, 'Detection header was altered.')
+        require(abs(detection.bbox.center.position.x - 160) < 2, 'Incorrect bounding box center.')
+        require(detection.results[0].hypothesis.class_id == 'pear', 'Unexpected class.')
+        require(received['annotated'].encoding == 'bgr8', 'Incorrect overlay encoding.')
+        require(received['target_mask'].encoding == 'mono8', 'Incorrect mask encoding.')
+        require(np.count_nonzero(bridge.imgmsg_to_cv2(received['target_mask'])) > 0, 'Empty mask.')
+        print('OK: RGB->BGR, detection, masks, overlay, original timestamp and frame.')
 
         rejected = detector.set_parameters([Parameter('opening_size', value=2)])[0]
-        require(not rejected.successful, 'Kernel non valido accettato.')
-        require(detector.get_parameter('opening_size').value == 3, 'Parametro modificato dopo rifiuto.')
-        print('OK: parametri non validi rifiutati.')
+        require(not rejected.successful, 'Invalid kernel was accepted.')
+        require(detector.get_parameter('opening_size').value == 3, 'Parameter changed after rejection.')
+        print('OK: invalid parameters rejected.')
 
         negative = bridge.cv2_to_imgmsg(np.zeros_like(positive), 'bgr8')
         negative.header.frame_id = source.header.frame_id
         negative.header.stamp = fixture.get_clock().now().to_msg()
-        wait_for(lambda: all_matching(negative), 'frame senza frutto', negative)
-        require(not received['detections'].detections, 'Target precedente rimasto dopo frame negativo.')
-        require(not np.any(bridge.imgmsg_to_cv2(received['target_mask'])), 'Maschera precedente rimasta.')
-        print('OK: nessuna detection e maschera nera quando il frutto scompare.')
+        wait_for(lambda: all_matching(negative), 'frame without fruit', negative)
+        require(not received['detections'].detections, 'Previous target remained after a negative frame.')
+        require(not np.any(bridge.imgmsg_to_cv2(received['target_mask'])), 'Previous mask remained.')
+        print('OK: no detection and empty mask when the fruit disappears.')
 
         source.header.stamp = fixture.get_clock().now().to_msg()
-        wait_for(lambda: all_matching(source), 'nuovo target', source)
-        require(received['detections'].detections, 'Target non recuperato.')
+        wait_for(lambda: all_matching(source), 'new target', source)
+        require(received['detections'].detections, 'Target did not recover.')
 
         def stream_expired():
             status = json.loads(received['status'].data) if 'status' in received else {}
@@ -124,8 +124,8 @@ def main():
                     and not received['detections'].detections
                     and not np.any(bridge.imgmsg_to_cv2(received['target_mask'])))
 
-        wait_for(stream_expired, 'timeout con invalidazione target', timeout=5.0)
-        print('OK: interruzione RGB invalida detection e maschere.')
+        wait_for(stream_expired, 'timeout with target invalidation', timeout=5.0)
+        print('OK: RGB interruption invalidates detections and masks.')
 
         malformed = Image()
         malformed.header.frame_id = source.header.frame_id
@@ -138,11 +138,11 @@ def main():
             return (matching('detections', malformed) and not received['detections'].detections
                     and status.get('state') == 'ERROR')
 
-        wait_for(conversion_failed, 'gestione errore conversione (errore log atteso)', malformed)
+        wait_for(conversion_failed, 'conversion error handling (expected error log)', malformed)
         source.header.stamp = fixture.get_clock().now().to_msg()
-        wait_for(lambda: all_matching(source), 'ripresa dopo errore', source)
-        require(received['detections'].detections, 'Ripresa dopo errore fallita.')
-        print('PREFLIGHT OK: detector HSV verificato su topic ROS isolati, senza Gazebo.')
+        wait_for(lambda: all_matching(source), 'recovery after error', source)
+        require(received['detections'].detections, 'Recovery after error failed.')
+        print('PREFLIGHT OK: HSV detector verified on isolated ROS topics without Gazebo.')
     finally:
         if executor is not None:
             executor.shutdown()

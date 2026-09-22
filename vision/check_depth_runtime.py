@@ -74,7 +74,7 @@ def main():
         pubs['depth'].publish(image(depth_array, '32FC1', stamp))
 
     try:
-        wait_for(lambda: all(pub.get_subscription_count() for pub in pubs.values()), 'Discovery fallita')
+        wait_for(lambda: all(pub.get_subscription_count() for pub in pubs.values()), 'Discovery failed')
         spin(.3)
         pubs['info'].publish(info)
         pubs['mask'].publish(image(mask, 'mono8', 100))
@@ -82,38 +82,38 @@ def main():
         spin(.3)
         assert not points, 'Timestamp diversi abbinati erroneamente'
         pubs['depth'].publish(image(depth, '32FC1', 100))
-        wait_for(lambda: bool(points), 'Nessun punto per coppia esatta')
+        wait_for(lambda: bool(points), 'No point published for an exact pair')
         p = points[-1]
         assert p.header.frame_id == info.header.frame_id and p.header.stamp.sec == 100
         np.testing.assert_allclose([p.point.x, p.point.y, p.point.z], [.18, -.06, 1.2], atol=1e-6)
         count = len(points)
         pair(102, mask_array=np.zeros_like(mask))
-        wait_for(lambda: estimator._state == 'NO_TARGET', 'Maschera vuota non invalidata')
+        wait_for(lambda: estimator._state == 'NO_TARGET', 'Empty mask did not invalidate the target')
         spin(.1)
         assert len(points) == count and markers[-1].action == Marker.DELETE
         pair(103, depth_array=np.full_like(depth, np.nan))
-        wait_for(lambda: estimator._state == 'INVALID_DEPTH', 'NaN non rifiutati')
+        wait_for(lambda: estimator._state == 'INVALID_DEPTH', 'NaN values were not rejected')
         pair(104)
-        wait_for(lambda: len(points) > count, 'Recupero fallito')
-        wait_for(lambda: statuses and statuses[-1]['state'] == 'STREAM_TIMEOUT', 'Watchdog fallito', 5)
+        wait_for(lambda: len(points) > count, 'Recovery failed')
+        wait_for(lambda: statuses and statuses[-1]['state'] == 'STREAM_TIMEOUT', 'Watchdog failed', 5)
         assert not statuses[-1]['valid']
         count = len(points)
         pair(105)
-        wait_for(lambda: len(points) > count, 'Recupero dopo timeout fallito')
+        wait_for(lambda: len(points) > count, 'Recovery after timeout failed')
         wrong = image(mask, 'mono8', 106)
         wrong.header.frame_id = 'wrong_frame'
         pubs['mask'].publish(wrong)
-        wait_for(lambda: estimator._state == 'INVALID_FRAME', 'Frame errato non rifiutato')
+        wait_for(lambda: estimator._state == 'INVALID_FRAME', 'Incorrect frame was not rejected')
         bad = image(depth, '32FC1', 107)
         bad.encoding = '16UC1'
         pubs['mask'].publish(image(mask, 'mono8', 107))
         pubs['depth'].publish(bad)
-        wait_for(lambda: estimator._state == 'INVALID_DEPTH', 'Encoding errato non rifiutato')
+        wait_for(lambda: estimator._state == 'INVALID_DEPTH', 'Incorrect encoding was not rejected')
         count = len(points)
         pair(50)
-        wait_for(lambda: len(points) > count, 'Recupero dopo reset temporale fallito')
+        wait_for(lambda: len(points) > count, 'Recovery after time reset failed')
         assert points[-1].header.stamp.sec == 50
-        print('DEPTH PREFLIGHT OK: timestamp, deproiezione, maschera vuota, NaN, frame, encoding, watchdog, reset, recupero.')
+        print('DEPTH PREFLIGHT OK: timestamp, deprojection, empty mask, NaN, frame, encoding, watchdog, reset, recovery.')
     finally:
         executor.shutdown()
         estimator.destroy_node()

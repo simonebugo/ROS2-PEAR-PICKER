@@ -22,13 +22,10 @@ from moveit_msgs.srv import GetCartesianPath, GetPositionIK, GetPlanningScene, A
 from moveit_msgs.msg import PlanningSceneComponents, AllowedCollisionEntry
 from trajectory_checks import cartesian_problem
 from moveit_msgs.msg import (
-    MotionPlanRequest,
     Constraints,
     PositionConstraint,
     OrientationConstraint,
     BoundingVolume,
-    PositionIKRequest,
-    JointConstraint,
 )
 from shape_msgs.msg import SolidPrimitive
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
@@ -52,13 +49,10 @@ def euler_to_quaternion(roll, pitch, yaw):
 
 class PickPlaceManager(Node):
     """
-    Coordinatore centrale per il Pick and Place della Pera.
-    Gestisce TF2, calcolo pose relative di Pick & Place, MoveIt Attach/Detach
-    e la pubblicazione delle pose operative per la traiettoria.
+    Coordinate target poses, MoveIt trajectories and the physical grasp lifecycle.
     """
 
-    # Il trasporto al cestino ha richiesto circa 67 s sul controller Gazebo.
-    # Lasciare margine per la simulazione lenta senza interrompere un goal valido.
+    # Wall-time allowance for slow Gazebo execution on a VM.
     EXECUTION_TIMEOUT_S = 120.0
 
     def __init__(self):
@@ -68,7 +62,7 @@ class PickPlaceManager(Node):
         self._require_vision_status = bool(self.get_parameter('require_vision_status').value)
         self._max_pose_age = float(self.get_parameter('max_pose_age_s').value)
         if not math.isfinite(self._max_pose_age) or self._max_pose_age <= 0:
-            raise ValueError('max_pose_age_s deve essere positivo e finito.')
+            raise ValueError('max_pose_age_s must be positive and finite.')
         self.latest_poses = None
         self._pear_msg = None
         self._pear_received_at = None
@@ -82,7 +76,6 @@ class PickPlaceManager(Node):
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
-        # Subscriber per la posa della pera
         self.sub_pear_pose = self.create_subscription(
             PoseStamped,
             '/harvest/pear_pose',
@@ -90,7 +83,6 @@ class PickPlaceManager(Node):
             10
         )
 
-        # Subscriber per lo stato del GraspManager
         self.sub_grasp_state = self.create_subscription(
             String,
             '/harvest/state',
@@ -98,7 +90,6 @@ class PickPlaceManager(Node):
             10
         )
 
-        # Subscriber per il trigger manuale di avvio da terminale
         self.sub_trigger = self.create_subscription(
             Empty,
             '/harvest/trigger',
@@ -106,17 +97,15 @@ class PickPlaceManager(Node):
             10
         )
 
-        # Publisher Pose Operative Pick (Pera)
+        # Target poses remain visible to RViz and external diagnostics.
         self.pub_pre_grasp = self.create_publisher(PoseStamped, '/harvest/pre_grasp_pose', 10)
         self.pub_grasp = self.create_publisher(PoseStamped, '/harvest/grasp_pose', 10)
         self.pub_lift = self.create_publisher(PoseStamped, '/harvest/lift_pose', 10)
 
-        # Publisher Pose Operative Place (Cestino - FASE 6)
         self.pub_pre_place = self.create_publisher(PoseStamped, '/harvest/pre_place_pose', 10)
         self.pub_place = self.create_publisher(PoseStamped, '/harvest/place_pose', 10)
         self.pub_retreat = self.create_publisher(PoseStamped, '/harvest/retreat_pose', 10)
 
-        # Publisher Marker 3D & Planning Scene
         self.pub_markers = self.create_publisher(MarkerArray, '/harvest/target_markers', 10)
         self.pub_planning_scene = self.create_publisher(PlanningScene, '/planning_scene', 10)
         self.pub_gripper_close_complete = self.create_publisher(
@@ -124,7 +113,6 @@ class PickPlaceManager(Node):
 
         self.current_grasp_state = 'UNKNOWN'
         self._grasp_state_condition = threading.Condition()
-        self.sequence_executed = False
         self._sequence_lock = threading.Lock()
         self._joint_lock = threading.Lock()
         self._joint_state = None
@@ -138,16 +126,15 @@ class PickPlaceManager(Node):
         self.declare_parameter('gripper_closed_position', 0.015)
         self.declare_parameter('grasp_state_timeout_s', 8.0)
         # False keeps the standalone MoveIt/RViz demo usable. The integrated
-        # Gazebo launch enables it so contact and detachable joints are mandatory.
+        # Gazebo launch enables physical attachment confirmation.
         self.declare_parameter('require_physical_grasp', False)
         
-        # Timer periodico per pubblicare le pose del cestino anche prima di ricevere la posa pera
+        # Show basket targets even before a pear measurement arrives.
         self.create_timer(1.0, self.publish_basket_poses)
 
-        self.get_logger().info('PickPlaceManager FASE 6: Coordinatore Pick & Place completo con pose Cestino.')
+        self.get_logger().info('Pick-and-place manager initialized.')
 
 
-        # Action Client per movimento libero e traiettorie
         self._move_group_client = ActionClient(self, MoveGroup, '/move_action')
         self._execute_trajectory_client = ActionClient(self, ExecuteTrajectory, '/execute_trajectory')
         self._gripper_client = ActionClient(
@@ -156,13 +143,12 @@ class PickPlaceManager(Node):
             '/gripper_controller/follow_joint_trajectory',
         )
 
-        # Service Client per movimento rettilineo e solutore IK
         self._cartesian_client = self.create_client(GetCartesianPath, '/compute_cartesian_path')
         self._ik_client = self.create_client(GetPositionIK, '/compute_ik')
         self._get_scene_client = self.create_client(GetPlanningScene, '/get_planning_scene')
         self._apply_scene_client = self.create_client(ApplyPlanningScene, '/apply_planning_scene')
 
-        self.get_logger().info('Client MoveIt 2 (/move_action, /execute_trajectory, /compute_cartesian_path, /compute_ik) pronti.')
+        self.get_logger().info('MoveIt 2 action and service clients initialized.')
 
     def _spin_future(self, future, timeout_sec=10.0):
         """Wait from the sequence thread while the main executor handles ROS."""
@@ -174,7 +160,7 @@ class PickPlaceManager(Node):
         return future.done()
 
     def compute_ik_for_pose(self, target_pose: PoseStamped):
-        """Calcola l'IK per una posa target. Restituisce la soluzione articolare o None se irraggiungibile."""
+        """Return an indicative collision-unchecked IK solution, or None."""
         if not self._ik_client.wait_for_service(timeout_sec=3.0):
             return None
 
@@ -182,7 +168,7 @@ class PickPlaceManager(Node):
         req.ik_request.group_name = 'arm'
         req.ik_request.ik_link_name = 'grasp_frame'
         req.ik_request.pose_stamped = target_pose
-        req.ik_request.avoid_collisions = False  # Cinematica pura senza controllo collisioni
+        req.ik_request.avoid_collisions = False  # Diagnostic only; motion planning checks collisions.
         req.ik_request.timeout.sec = 5
 
         future = self._ik_client.call_async(req)
@@ -190,11 +176,11 @@ class PickPlaceManager(Node):
         res = future.result()
 
         if res and res.error_code.val == 1:  # 1 = SUCCESS
-            self.get_logger().info("IK: Soluzione cinematica pura trovata.")
+            self.get_logger().info("IK: kinematic solution found.")
             return res.solution.joint_state
 
         self.get_logger().error(
-            f"IK: Posa irraggiungibile cinematicamente "
+            f"IK: no kinematic solution found for "
             f"({target_pose.pose.position.x:.2f}, "
             f"{target_pose.pose.position.y:.2f}, "
             f"{target_pose.pose.position.z:.2f})"
@@ -229,7 +215,7 @@ class PickPlaceManager(Node):
                 elif now-since >= .4 and count-first_count >= 3:
                     return state
             time.sleep(.02)
-        self.get_logger().error('Braccio non fermo o /joint_states non recente: pianificazione interrotta.')
+        self.get_logger().error('Arm is moving or /joint_states is stale: planning stopped.')
         return None
 
     def read_scene(self, components):
@@ -254,7 +240,7 @@ class PickPlaceManager(Node):
     def allow_fruit_contact(self):
         scene = self.read_scene(PlanningSceneComponents.ALLOWED_COLLISION_MATRIX)
         if scene is None:
-            self.get_logger().error('Planning scene non disponibile per il contatto pera-gripper.')
+            self.get_logger().error('Planning scene unavailable for pear-gripper contact.')
             return False
         matrix = scene.allowed_collision_matrix
         self._saved_acm = copy.deepcopy(matrix)
@@ -271,7 +257,7 @@ class PickPlaceManager(Node):
             matrix.entry_values[pear_index].enabled[i] = True
             matrix.entry_values[i].enabled[pear_index] = True
         if not self.apply_acm(matrix):
-            self.get_logger().error('Impossibile applicare il contatto pera-gripper; sequenza interrotta.')
+            self.get_logger().error('Cannot allow pear-gripper contact; sequence stopped.')
             return False
         return True
 
@@ -284,26 +270,25 @@ class PickPlaceManager(Node):
                 if (attached and any(obj.link_name == 'grasp_frame' for obj in objects)) or (not attached and not objects):
                     return True
             time.sleep(.1)
-        self.get_logger().error('MoveIt non ha confermato aggiornamento attach/detach della pera.')
+        self.get_logger().error('MoveIt did not confirm the pear attachment update.')
         return False
 
 
     def plan_and_move_to_pose(self, target_pose: PoseStamped) -> bool:
         """
-        Pianifica ed esegue un movimento nello spazio libero verso una posa target usando ComputeIK e MoveGroup.
+        Plan and execute a collision-checked free-space motion to the target pose.
         """
         if not self._move_group_client.wait_for_server(timeout_sec=5.0):
-            self.get_logger().error("Action Server /move_action non disponibile!")
+            self.get_logger().error("Action Server /move_action unavailable!")
             return False
 
-        # Verifica indicativa raggiungibilità
         self.compute_ik_for_pose(target_pose)
 
         state = self.wait_for_stable_arm()
         if state is None:
             return False
 
-        self.get_logger().info("Invio Pose Goal a MoveGroup (plan + execute)...")
+        self.get_logger().info("Sending pose goal to MoveGroup for planning...")
 
         goal_msg = MoveGroup.Goal()
         goal_msg.request.group_name = 'arm'
@@ -314,14 +299,11 @@ class PickPlaceManager(Node):
         goal_msg.request.start_state.is_diff = True
         goal_msg.request.start_state.joint_state = state
 
-        # Invece di vincolare tutti i 6 giunti a una singola soluzione IK rigida,
-        # inviamo a MoveGroup una Pose Goal (PositionConstraint + OrientationConstraint).
-        # In questo modo il planner OMPL campiona liberamente diverse soluzioni IK
-        # trovando un percorso privo di collisioni.
+        # Pose constraints let OMPL choose among collision-free IK configurations.
         constraints = Constraints()
         constraints.name = "pose_target"
 
-        # 1. Position Constraint (tolleranza sferica di 2 cm)
+        # Position tolerance: a sphere of radius 3 cm.
         pos_constraint = PositionConstraint()
         pos_constraint.header.stamp = self.get_clock().now().to_msg()
         pos_constraint.header.frame_id = target_pose.header.frame_id
@@ -330,7 +312,7 @@ class PickPlaceManager(Node):
         bv = BoundingVolume()
         sphere = SolidPrimitive()
         sphere.type = SolidPrimitive.SPHERE
-        sphere.dimensions = [0.03]  # raggio 3 cm di tolleranza
+        sphere.dimensions = [0.03]
         bv.primitives.append(sphere)
 
         sphere_pose = Pose()
@@ -342,7 +324,7 @@ class PickPlaceManager(Node):
         pos_constraint.weight = 1.0
         constraints.position_constraints.append(pos_constraint)
 
-        # 2. Orientation Constraint (tolleranza angolare di ~11 gradi)
+        # Orientation tolerance: 0.20 rad on each axis.
         orient_constraint = OrientationConstraint()
         orient_constraint.header.stamp = self.get_clock().now().to_msg()
         orient_constraint.header.frame_id = target_pose.header.frame_id
@@ -355,28 +337,27 @@ class PickPlaceManager(Node):
         constraints.orientation_constraints.append(orient_constraint)
 
         goal_msg.request.goal_constraints.append(constraints)
-        goal_msg.planning_options.plan_only = True  # Calcola prima la traiettoria pulita
+        goal_msg.planning_options.plan_only = True
         goal_msg.planning_options.planning_scene_diff.is_diff = True
         # The pear remains a world CollisionObject during pre-grasp planning.
         # It is attached to grasp_frame only after GraspManager confirms
         # ON_GRIPPER in attach_pear_in_moveit().
 
         self.get_logger().info(
-            f"Pianificazione traiettoria verso ({target_pose.pose.position.x:.2f}, "
+            f"Planning trajectory to ({target_pose.pose.position.x:.2f}, "
             f"{target_pose.pose.position.y:.2f}, "
             f"{target_pose.pose.position.z:.2f})..."
         )
 
-        # 1. Invia richiesta di pianificazione a MoveGroup
         goal_future = self._move_group_client.send_goal_async(goal_msg)
         self._spin_future(goal_future, timeout_sec=10.0)
         goal_handle = goal_future.result()
 
         if not goal_handle or not goal_handle.accepted:
-            self.get_logger().error("Richiesta di pianificazione rifiutata da MoveIt!")
+            self.get_logger().error("MoveIt rejected the planning request.")
             return False
 
-        self.get_logger().info("Goal accettato. Pianificazione in corso...")
+        self.get_logger().info("Goal accepted; planning...")
 
         result_future = goal_handle.get_result_async()
         self._spin_future(result_future, timeout_sec=20.0)
@@ -385,12 +366,12 @@ class PickPlaceManager(Node):
         if not result or result.result.error_code.val != 1:
             code = result.result.error_code.val if (result and hasattr(result.result, 'error_code')) else -1
             plan_time = getattr(result.result, 'planning_time', 0.0) if result else 0.0
-            self.get_logger().error(f"Pianificazione fallita! Codice MoveIt: {code} (Tempo: {plan_time:.2f}s)")
+            self.get_logger().error(f"Planning failed: MoveIt code {code} (time: {plan_time:.2f}s)")
             return False
 
-        # 2. Pianificazione riuscita: invia la traiettoria al controller tramite ExecuteTrajectory
+        # Execute only after MoveIt accepts the planned trajectory.
         pts_count = len(result.result.planned_trajectory.joint_trajectory.points)
-        self.get_logger().info(f"Pianificazione riuscita ({pts_count} waypoint)! Esecuzione sul controller...")
+        self.get_logger().info(f"Planning succeeded ({pts_count} waypoints); executing...")
 
         exec_goal = ExecuteTrajectory.Goal()
         exec_goal.trajectory = result.result.planned_trajectory
@@ -400,31 +381,31 @@ class PickPlaceManager(Node):
         exec_handle = exec_future.result()
 
         if not exec_handle or not exec_handle.accepted:
-            self.get_logger().error("Traiettoria rifiutata da ExecuteTrajectory!")
+            self.get_logger().error("ExecuteTrajectory rejected the trajectory.")
             return False
 
         exec_res_future = exec_handle.get_result_async()
         if not self._spin_future(exec_res_future, timeout_sec=self.EXECUTION_TIMEOUT_S):
             self.get_logger().error(
-                f'Timeout esecuzione MoveIt dopo {self.EXECUTION_TIMEOUT_S:.0f} s; '
-                'il controller potrebbe ancora completare il goal.')
+                f'MoveIt execution timed out after {self.EXECUTION_TIMEOUT_S:.0f} s; '
+                'the controller may still complete the goal.')
             return False
         exec_res = exec_res_future.result()
 
         if exec_res and exec_res.result.error_code.val == 1:
-            self.get_logger().info("Movimento completato con successo! Robot si è spostato.")
+            self.get_logger().info("Motion completed successfully.")
             return True
         else:
             code = exec_res.result.error_code.val if exec_res else -1
-            self.get_logger().error(f"Esecuzione traiettoria fallita sul controller! Codice: {code}")
+            self.get_logger().error(f"Controller trajectory execution failed: code {code}")
             return False
 
     def execute_cartesian_path(self, waypoints: list) -> bool:
         """
-        Calcola ed esegue una traiettoria cartesiana rettilinea passando per i waypoints.
+        Plan and execute a collision-checked Cartesian path through the waypoints.
         """
         if not self._cartesian_client.wait_for_service(timeout_sec=5.0):
-            self.get_logger().error("Servizio /compute_cartesian_path non disponibile!")
+            self.get_logger().error("Service /compute_cartesian_path unavailable!")
             return False
 
         state = self.wait_for_stable_arm()
@@ -446,23 +427,23 @@ class PickPlaceManager(Node):
         req.max_velocity_scaling_factor = 0.4
         req.max_acceleration_scaling_factor = 0.4
 
-        self.get_logger().info(f"Calcolo traiettoria cartesiana per {len(waypoints)} waypoint...")
+        self.get_logger().info(f"Computing Cartesian trajectory through {len(waypoints)} waypoints...")
         future = self._cartesian_client.call_async(req)
         self._spin_future(future, timeout_sec=10.0)
         res = future.result()
 
         if res is None:
-            self.get_logger().error('Nessuna risposta al calcolo cartesiano.')
+            self.get_logger().error('No response to Cartesian planning request.')
             return False
         problem = cartesian_problem(res, state)
         if problem:
             self.get_logger().error(problem)
             return False
 
-        self.get_logger().info(f"Traiettoria calcolata ({res.fraction * 100:.1f}%). Invio a /execute_trajectory...")
+        self.get_logger().info(f"Cartesian path complete ({res.fraction * 100:.1f}%); sending to /execute_trajectory...")
 
         if not self._execute_trajectory_client.wait_for_server(timeout_sec=5.0):
-            self.get_logger().error("/execute_trajectory non disponibile!")
+            self.get_logger().error("/execute_trajectory unavailable!")
             return False
 
         exec_goal = ExecuteTrajectory.Goal()
@@ -473,23 +454,23 @@ class PickPlaceManager(Node):
         exec_handle = exec_future.result()
 
         if not exec_handle or not exec_handle.accepted:
-            self.get_logger().error("Traiettoria cartesiana rifiutata dal controller!")
+            self.get_logger().error("Controller rejected the Cartesian trajectory.")
             return False
 
         res_future = exec_handle.get_result_async()
         if not self._spin_future(res_future, timeout_sec=self.EXECUTION_TIMEOUT_S):
             self.get_logger().error(
-                f'Timeout esecuzione cartesiana dopo {self.EXECUTION_TIMEOUT_S:.0f} s; '
-                'il controller potrebbe ancora completare il goal.')
+                f'Cartesian execution timed out after {self.EXECUTION_TIMEOUT_S:.0f} s; '
+                'the controller may still complete the goal.')
             return False
         exec_result = res_future.result()
         if exec_result and exec_result.result.error_code.val == 1:
-            self.get_logger().info("Traiettoria cartesiana eseguita con successo.")
+            self.get_logger().info("Cartesian trajectory executed successfully.")
             return True
 
         error_code = exec_result.result.error_code.val if exec_result else -1
         self.get_logger().error(
-            f"Esecuzione cartesiana fallita sul controller! Codice: {error_code}")
+            f"Controller Cartesian execution failed: code {error_code}")
         return False
 
     def grasp_state_callback(self, msg: String):
@@ -499,7 +480,7 @@ class PickPlaceManager(Node):
             self.current_grasp_state = state_text
 
         if state_changed:
-            self.get_logger().info(f'Stato GraspManager aggiornato: {self.current_grasp_state}')
+            self.get_logger().info(f'GraspManager state updated: {self.current_grasp_state}')
 
             if self.current_grasp_state == 'ON_GRIPPER':
                 self.attach_pear_in_moveit()
@@ -512,10 +493,10 @@ class PickPlaceManager(Node):
             self._grasp_state_condition.notify_all()
 
     def command_gripper(self, position: float, movement_time_s: float = 2.0) -> bool:
-        """Invia una posizione simmetrica al controller fisico del gripper."""
+        """Command both fingers to the same joint position."""
         if not self._gripper_client.wait_for_server(timeout_sec=5.0):
             self.get_logger().error(
-                'Action server /gripper_controller/follow_joint_trajectory non disponibile!')
+                'Action server /gripper_controller/follow_joint_trajectory unavailable!')
             return False
 
         goal = FollowJointTrajectory.Goal()
@@ -533,7 +514,7 @@ class PickPlaceManager(Node):
         self._spin_future(goal_future, timeout_sec=8.0)
         goal_handle = goal_future.result()
         if not goal_handle or not goal_handle.accepted:
-            self.get_logger().error('Comando del gripper rifiutato dal controller!')
+            self.get_logger().error('Controller rejected the gripper command.')
             return False
 
         result_future = goal_handle.get_result_async()
@@ -543,15 +524,15 @@ class PickPlaceManager(Node):
                 result.result.error_code != FollowJointTrajectory.Result.SUCCESSFUL):
             error_code = result.result.error_code if result else -1
             self.get_logger().error(
-                f'Movimento del gripper fallito! Codice: {error_code}')
+                f'Gripper motion failed: code {error_code}')
             return False
 
         self.get_logger().info(
-            f'Gripper portato alla posizione {position:.3f} m.')
+            f'Gripper reached position {position:.3f} m.')
         return True
 
     def wait_for_grasp_state(self, expected_state: str) -> bool:
-        """Attende la conferma fisica del GraspManager senza bloccare i callback ROS."""
+        """Wait for physical grasp confirmation without blocking ROS callbacks."""
         timeout_s = float(self.get_parameter('grasp_state_timeout_s').value)
         deadline = time.monotonic() + timeout_s
         with self._grasp_state_condition:
@@ -559,13 +540,13 @@ class PickPlaceManager(Node):
                 remaining = deadline - time.monotonic()
                 if remaining <= 0.0:
                     self.get_logger().error(
-                        f'Timeout: stato {expected_state} non ricevuto dal GraspManager.')
+                        f'Timeout waiting for GraspManager state {expected_state}.')
                     return False
                 self._grasp_state_condition.wait(timeout=remaining)
         return True
 
     def attach_pear_in_moveit(self):
-        """Aggancia la pera a grasp_frame in MoveIt per evitare falsi allarmi di collisione con le dita."""
+        """Attach the existing pear collision object to grasp_frame in MoveIt."""
         scene_msg = PlanningScene()
         scene_msg.is_diff = True
         # An AttachedCollisionObject changes RobotState, not only the world.
@@ -580,10 +561,10 @@ class PickPlaceManager(Node):
 
         scene_msg.robot_state.attached_collision_objects.append(attached_obj)
         self.pub_planning_scene.publish(scene_msg)
-        self.get_logger().info('MoveIt Planning Scene: Pera AGGANCIATA a grasp_frame (AttachedCollisionObject).')
+        self.get_logger().info('MoveIt attachment update published: pear -> grasp_frame.')
 
     def detach_pear_in_moveit(self):
-        """Stacca la pera da grasp_frame in MoveIt."""
+        """Detach the pear collision object from grasp_frame in MoveIt."""
         scene_msg = PlanningScene()
         scene_msg.is_diff = True
         scene_msg.robot_state.is_diff = True
@@ -595,10 +576,10 @@ class PickPlaceManager(Node):
 
         scene_msg.robot_state.attached_collision_objects.append(attached_obj)
         self.pub_planning_scene.publish(scene_msg)
-        self.get_logger().info('MoveIt Planning Scene: Pera SGANCIATA dal robot (Detached).')
+        self.get_logger().info('MoveIt detachment update published for the pear.')
 
     def add_pear_to_world(self, pose: Pose) -> None:
-        """Reinserisce la pera come ostacolo statico nel demo MoveIt/RViz."""
+        """Restore the released pear as a static obstacle in the MoveIt-only demo."""
         scene_msg = PlanningScene()
         scene_msg.is_diff = True
 
@@ -616,13 +597,12 @@ class PickPlaceManager(Node):
 
         self.pub_planning_scene.publish(scene_msg)
         self.get_logger().info(
-            'MoveIt Planning Scene: Pera reinserita nel world alla posa di deposito.')
+            'MoveIt world update published: pear at the placement pose.')
 
     def publish_basket_poses(self):
-        """FASE 6: Definizione e pubblicazione delle pose operative per il cestino (frame base_link)."""
+        """Publish basket target poses in base_link."""
         basket_world_x = 0.65
         basket_world_y = -0.55
-        basket_world_z = 0.0
 
         basket_yaw = math.atan2(basket_world_y, basket_world_x)
         basket_orientation = euler_to_quaternion(-math.pi, 0.0, basket_yaw)
@@ -648,7 +628,7 @@ class PickPlaceManager(Node):
         self.pub_retreat.publish(retreat)
 
     def pear_pose_callback(self, msg: PoseStamped):
-        """Trasforma la posa della pera in base_link e calcola pre_grasp, grasp, lift."""
+        """Transform the pear pose to base_link and compute the cycle targets."""
         self.latest_poses = None
         self._pear_msg = msg
         self._pear_received_at = time.monotonic()
@@ -664,7 +644,7 @@ class PickPlaceManager(Node):
             )
             pear_in_base = do_transform_pose_stamped(msg, transform)
         except Exception as e:
-            self.get_logger().warn(f'Errore TF2 nella trasformazione della posa pera: {e}')
+            self.get_logger().warn(f'TF2 error transforming the pear pose: {e}')
             return
 
         px = pear_in_base.pose.position.x
@@ -673,49 +653,31 @@ class PickPlaceManager(Node):
         if not all(math.isfinite(v) for v in (px, py, pz)):
             return
 
-        # Angolo di approccio nel piano XY (direzione orizzontale verso la pera)
+        # Radial approach in the base XY plane.
         approach_yaw = math.atan2(py, px)
 
-        # ---------------------------------------------------------------
-        # Orientamento del gripper per la PERA (approccio ORIZZONTALE):
-        #
-        # Geometria gripper (dal URDF):
-        #   - Asse Z di grasp_frame = direzione di presa (punta FUORI dal gripper)
-        #   - Asse Y di grasp_frame = direzione apertura dita (left/right finger)
-        #
-        # Obiettivo:
-        #   - Z punti ORIZZONTALMENTE verso la pera → pitch = +π/2
-        #   - Y rimanga ORIZZONTALE → dita affiancate sinistra-destra (parallele al suolo)
-        #   - yaw = approach_yaw → il gripper punta nella direzione della pera nel piano XY
-        #
-        # Risultato visivo: il gripper arriva LATERALMENTE alla pera,
-        # con le due dita aperte a sinistra e destra (non una sopra e una sotto).
-        # ---------------------------------------------------------------
-        # With the pre-grasp pose behind the fruit, +Z must point from the
-        # robot towards the pear. This keeps link5 on the robot side of the
-        # grasp frame instead of driving the wrist through the fruit.
+        # Grasp-frame +Z points horizontally toward the fruit; +Y keeps
+        # the fingers side by side. The wrist stays behind the grasp frame.
         grasp_orientation = euler_to_quaternion(0.0, math.pi / 2.0, approach_yaw)
 
         dist_xy = math.sqrt(px * px + py * py)
         dir_x = px / dist_xy if dist_xy > 0 else 1.0
         dir_y = py / dist_xy if dist_xy > 0 else 0.0
 
-        # Posa di presa: esattamente sulla pera
         grasp_pose = PoseStamped()
         grasp_pose.header.stamp = self.get_clock().now().to_msg()
         grasp_pose.header.frame_id = 'base_link'
         grasp_pose.pose.position = Point(x=px, y=py, z=pz)
         grasp_pose.pose.orientation = grasp_orientation
 
-        # Pre-grasp: 25 cm INDIETRO rispetto alla pera nel piano XY (stesso Z della pera).
-        # Maggiore distanza per dare ampio respiro al robot prima dell'avvicinamento rettilineo.
+        # Approach horizontally from 25 cm behind the fruit.
         offset_pre = 0.25
         pre_grasp_pose = PoseStamped()
         pre_grasp_pose.header = grasp_pose.header
         pre_grasp_pose.pose.position = Point(
             x=px - dir_x * offset_pre,
             y=py - dir_y * offset_pre,
-            z=pz  # stesso Z della pera: approccio perfettamente orizzontale
+            z=pz
         )
         pre_grasp_pose.pose.orientation = grasp_orientation
 
@@ -754,9 +716,6 @@ class PickPlaceManager(Node):
 
         self.latest_poses = (pre_grasp_pose, grasp_pose, lift_pose, pre_place_pose, place_pose, retreat_pose)
 
-        # PER AVVIO AUTOMATICO IMMEDIATO (es. con la telecamera): scommentare la riga sottostante
-        # self.start_pick_and_place_sequence(pre_grasp_pose, grasp_pose, lift_pose, pre_place_pose, place_pose, retreat_pose)
-
     def center_status_callback(self, msg: String):
         try:
             status = json.loads(msg.data)
@@ -768,12 +727,12 @@ class PickPlaceManager(Node):
     def target_rejection_reason(self):
         """Four trigger checks: presence, finite coordinates, validity, freshness."""
         if self._pear_msg is None:
-            return 'posa della pera non ancora disponibile'
+            return 'pear pose not available yet'
         p = self._pear_msg.pose.position
         if not all(math.isfinite(v) for v in (p.x, p.y, p.z)):
-            return 'coordinate della pera non finite'
+            return 'nonfinite pear coordinates'
         if self.latest_poses is None:
-            return 'posa non disponibile in base_link (verificare TF)'
+            return 'pose unavailable in base_link (check TF)'
         stamp = self._pear_msg.header.stamp
         now = time.monotonic()
         ages = [now - self._pear_received_at,
@@ -783,65 +742,62 @@ class PickPlaceManager(Node):
             status = self._center_status
             if (status.get('valid') is not True or
                     status.get('stamp') != {'sec': stamp.sec, 'nanosec': stamp.nanosec}):
-                return 'center_status non valido per questa misura'
+                return 'center_status is invalid for this measurement'
             try:
                 ages.append(float(status['received_age_s']) + now - self._center_status_at)
             except (KeyError, TypeError, ValueError):
-                return 'età della misura vision non disponibile'
+                return 'vision measurement age unavailable'
         if any(not math.isfinite(age) or age < 0 or age > self._max_pose_age for age in ages):
-            return f'posa scaduta o timestamp non coerente (limite {self._max_pose_age:.1f} s)'
+            return f'stale pose or inconsistent timestamp (limit {self._max_pose_age:.1f} s)'
         return None
 
     def trigger_callback(self, msg: Empty):
-        """Chiamato quando l'utente invia il comando manuale di avvio su /harvest/trigger."""
+        """Validate the target and capture the cycle poses on a manual trigger."""
         reason = self.target_rejection_reason()
         if reason is None:
-            self.get_logger().info('TRIGGER MANUALE RICEVUTO! Avvio della sequenza in un thread dedicato...')
+            self.get_logger().info('Manual trigger received; starting the sequence worker...')
             thread = threading.Thread(target=self.start_pick_and_place_sequence, args=self.latest_poses)
             thread.start()
         else:
-            self.get_logger().warn(f'Trigger rifiutato: {reason}.')
+            self.get_logger().warn(f'Trigger rejected: {reason}.')
 
     def start_pick_and_place_sequence(self, pre_g: PoseStamped, grasp: PoseStamped, lift: PoseStamped, pre_p: PoseStamped, place: PoseStamped, retreat: PoseStamped):
         if not self._sequence_lock.acquire(blocking=False):
-            self.get_logger().warn('Sequenza già in corso: trigger ignorato.')
+            self.get_logger().warn('Sequence already running: trigger ignored.')
             return
         try:
             self._run_pick_and_place(pre_g, grasp, lift, pre_p, place, retreat)
         finally:
             try:
                 if self._saved_acm is not None and not self.apply_acm(self._saved_acm):
-                    self.get_logger().error('Ripristino contatti MoveIt fallito; riavviare prima di un nuovo ciclo.')
+                    self.get_logger().error('Failed to restore MoveIt contact permissions; restart before another cycle.')
                 self._saved_acm = None
             finally:
                 self._sequence_lock.release()
 
     def _run_pick_and_place(self, pre_g, grasp, lift, pre_p, place, retreat):
         """
-        Esegue l'intera sequenza automatica Pick and Place in 8 fasi.
+        Execute the eight-step pick-and-place cycle.
         """
-        self.get_logger().info("=== AVVIO SEQUENZA PICK AND PLACE ===")
+        self.get_logger().info("=== STARTING PICK AND PLACE ===")
 
-        # FASE 1: Movimento nello spazio libero verso la posa pre_grasp
-        self.get_logger().info("[FASE 1/8] Movimento a pre_grasp...")
+        self.get_logger().info("[STEP 1/8] Moving to pre-grasp...")
         if not self.plan_and_move_to_pose(pre_g):
-            self.get_logger().error("FASE 1 FALLITA: Impossibile raggiungere pre_grasp. Sequenza interrotta.")
+            self.get_logger().error("STEP 1 FAILED: cannot reach pre-grasp. Sequence stopped.")
             return
 
-        # FASE 2: Avvicinamento cartesiano rettilineo sulla pera (grasp).
         # The final approach intentionally permits fingertip-to-pear contact.
-        self.get_logger().info("[FASE 2/8] Avvicinamento rettilineo alla pera...")
+        self.get_logger().info("[STEP 2/8] Cartesian approach to the pear...")
         if not self.allow_fruit_contact():
             return
         if not self.execute_cartesian_path([grasp.pose]):
-            self.get_logger().error("FASE 2 FALLITA: Traiettoria verso grasp fallita. Sequenza interrotta.")
+            self.get_logger().error("STEP 2 FAILED: grasp approach failed. Sequence stopped.")
             return
 
-        # FASE 3 & 4: Chiusura dita ed attesa aggancio fisico (GraspManager ON_GRIPPER)
-        self.get_logger().info("[FASE 3/8] Presa pera in corso (attesa conferma GraspManager)...")
+        self.get_logger().info("[STEP 3/8] Closing gripper and awaiting GraspManager confirmation...")
         closed_position = float(self.get_parameter('gripper_closed_position').value)
         if not self.command_gripper(closed_position):
-            self.get_logger().error("FASE 3 FALLITA: Chiusura del gripper fallita.")
+            self.get_logger().error("STEP 3 FAILED: gripper closure failed.")
             return
         # GraspManager uses this event after the controller has completed the
         # deliberate close command at the known grasp pose.  This also covers
@@ -853,7 +809,7 @@ class PickPlaceManager(Node):
         if (require_physical_grasp and
                 not self.wait_for_grasp_state('ON_GRIPPER')):
             self.get_logger().error(
-                "FASE 4 FALLITA: presa non confermata dai contatti/detachable joint.")
+                "STEP 4 FAILED: physical grasp was not confirmed.")
             return
         if not require_physical_grasp:
             # In the standalone MoveIt/RViz demo there is no Gazebo
@@ -864,38 +820,35 @@ class PickPlaceManager(Node):
             self.attach_pear_in_moveit()
             time.sleep(0.2)
 
-        # FASE 5: Move away from the branch before lifting. The first waypoint
+        # Move away from the branch before lifting. The first waypoint
         # retraces the safe horizontal approach; the second raises the pear in
         # the cleared area, away from the trunk and fruit branch.
-        self.get_logger().info("[FASE 5/8] Arretramento dal ramo e sollevamento pera...")
+        self.get_logger().info("[STEP 5/8] Retreating from the branch and lifting the pear...")
         if not self.wait_for_scene_attachment(True):
             return
         if not self.execute_cartesian_path([pre_g.pose, lift.pose]):
-            self.get_logger().error("FASE 5 FALLITA: Arretramento/lift dal ramo fallito. Sequenza interrotta.")
+            self.get_logger().error("STEP 5 FAILED: branch retreat/lift failed. Sequence stopped.")
             return
 
-        # FASE 6: Trasporto nello spazio libero verso il cestino (pre_place)
-        self.get_logger().info("[FASE 6/8] Trasporto della pera al cestino...")
+        self.get_logger().info("[STEP 6/8] Transporting the pear to the basket...")
         if not self.plan_and_move_to_pose(pre_p):
-            self.get_logger().error("FASE 6 FALLITA: Trasporto verso il cestino fallito. Sequenza interrotta.")
+            self.get_logger().error("STEP 6 FAILED: basket transport failed. Sequence stopped.")
             return
 
-        # FASE 7: Discesa cartesiana rettilinea nel cestino (place +18 cm)
-        self.get_logger().info("[FASE 7/8] Discesa nel cestino...")
+        self.get_logger().info("[STEP 7/8] Descending into the basket...")
         if not self.execute_cartesian_path([place.pose]):
-            self.get_logger().error("FASE 7 FALLITA: Discesa nel cestino fallita. Sequenza interrotta.")
+            self.get_logger().error("STEP 7 FAILED: basket descent failed. Sequence stopped.")
             return
 
-        # FASE 8: apertura, distacco fisico e risalita di disimpegno.
-        self.get_logger().info("[FASE 8/8] Rilascio pera e risalita di sicurezza...")
+        self.get_logger().info("[STEP 8/8] Releasing the pear and retreating...")
         open_position = float(self.get_parameter('gripper_open_position').value)
         if not self.command_gripper(open_position):
-            self.get_logger().error("FASE 8 FALLITA: Apertura del gripper fallita.")
+            self.get_logger().error("STEP 8 FAILED: gripper opening failed.")
             return
         if (require_physical_grasp and
                 not self.wait_for_grasp_state('RELEASED')):
             self.get_logger().error(
-                "FASE 8 FALLITA: distacco della pera non confermato.")
+                "STEP 8 FAILED: pear release was not confirmed.")
             return
         if not require_physical_grasp:
             self.detach_pear_in_moveit()
@@ -903,7 +856,7 @@ class PickPlaceManager(Node):
         if not self.wait_for_scene_attachment(False):
             return
         if not self.execute_cartesian_path([retreat.pose]):
-            self.get_logger().error("FASE 8 FALLITA: Risalita di sicurezza fallita.")
+            self.get_logger().error("STEP 8 FAILED: retreat failed.")
             return
         if not require_physical_grasp:
             # Add it back only once the TCP has cleared the fruit; adding it
@@ -911,10 +864,10 @@ class PickPlaceManager(Node):
             # the freshly released collision object.
             self.add_pear_to_world(place.pose)
 
-        self.get_logger().info("=== SEQUENZA PICK AND PLACE COMPLETATA CON SUCCESSO! ===")
+        self.get_logger().info("=== PICK AND PLACE COMPLETED SUCCESSFULLY ===")
 
     def publish_all_markers(self, pre_g, grasp, lift, pre_p, place, retreat):
-        """Pubblica tutti e 6 i marker 3D (frecce) per la visualizzazione completa dell'algoritmo in RViz."""
+        """Publish six RViz target arrows; these illustrate goals, not the planned joint path."""
         marker_array = MarkerArray()
         now = self.get_clock().now().to_msg()
 
@@ -927,42 +880,42 @@ class PickPlaceManager(Node):
             m.type = Marker.ARROW
             m.action = Marker.ADD
             m.points = [p_start, p_end]
-            m.scale.x = 0.02  # Diametro asta
-            m.scale.y = 0.04  # Diametro punta
-            m.scale.z = 0.06  # Lunghezza punta
+            m.scale.x = 0.02  # Shaft diameter.
+            m.scale.y = 0.04  # Head diameter.
+            m.scale.z = 0.06  # Head length.
             m.color.r = r
             m.color.g = g
             m.color.b = b
             m.color.a = 0.95
             return m
 
-        # Direzione orizzontale verso la pera
+        # Horizontal direction toward the pear.
         dx = grasp.position.x - pre_g.position.x
         dy = grasp.position.y - pre_g.position.y
         d_len = math.sqrt(dx * dx + dy * dy)
         ux = dx / d_len if d_len > 0 else 1.0
         uy = dy / d_len if d_len > 0 else 0.0
 
-        # 1. Pre-grasp: freccia orizzontale che punta verso la pera (lunghezza 15 cm)
+        # Pre-grasp: 15 cm arrow along the approach direction.
         p_pre_end = Point(x=pre_g.position.x + ux * 0.15, y=pre_g.position.y + uy * 0.15, z=pre_g.position.z)
-        m_pre_g = create_arrow_points_marker(1, 'pre_grasp', pre_g.position, p_pre_end, 0.0, 0.5, 1.0)   # Blu
+        m_pre_g = create_arrow_points_marker(1, 'pre_grasp', pre_g.position, p_pre_end, 0.0, 0.5, 1.0)
 
-        # 2. Grasp: freccia orizzontale sulla pera (lunghezza 10 cm lungo l'asse di presa)
+        # Grasp: 10 cm arrow along the grasp axis.
         p_grasp_end = Point(x=grasp.position.x + ux * 0.10, y=grasp.position.y + uy * 0.10, z=grasp.position.z)
-        m_grasp = create_arrow_points_marker(2, 'grasp', grasp.position, p_grasp_end, 0.0, 1.0, 0.2)       # Verde
+        m_grasp = create_arrow_points_marker(2, 'grasp', grasp.position, p_grasp_end, 0.0, 1.0, 0.2)
 
-        # 3. Lift: freccia verticale che va dalla posa grasp alla posa lift (+20 cm in alto)
-        m_lift = create_arrow_points_marker(3, 'lift', grasp.position, lift.position, 1.0, 0.8, 0.0)         # Giallo
+        # This arrow connects targets; the actual path retreats before lifting.
+        m_lift = create_arrow_points_marker(3, 'lift', grasp.position, lift.position, 1.0, 0.8, 0.0)
 
-        # 4. Pre-place: freccia verticale verso il basso da pre_place a place
-        m_pre_p = create_arrow_points_marker(4, 'pre_place', pre_p.position, place.position, 0.6, 0.2, 0.8)   # Viola
+        # Pre-place: descent into the basket.
+        m_pre_p = create_arrow_points_marker(4, 'pre_place', pre_p.position, place.position, 0.6, 0.2, 0.8)
 
-        # 5. Place: freccia verso il fondo del cestino (8 cm verso il basso)
+        # Place: 8 cm arrow toward the basket bottom.
         p_place_end = Point(x=place.position.x, y=place.position.y, z=place.position.z - 0.08)
-        m_place = create_arrow_points_marker(5, 'place', place.position, p_place_end, 1.0, 0.0, 0.4)        # Magenta/Rosso
+        m_place = create_arrow_points_marker(5, 'place', place.position, p_place_end, 1.0, 0.0, 0.4)
 
-        # 6. Retreat: freccia verso l'alto da place a retreat (+22 cm verso l'alto)
-        m_ret = create_arrow_points_marker(6, 'retreat', place.position, retreat.position, 0.0, 0.9, 0.9)     # Ciano
+        # Retreat: rise 22 cm after release.
+        m_ret = create_arrow_points_marker(6, 'retreat', place.position, retreat.position, 0.0, 0.9, 0.9)
 
         marker_array.markers.extend([m_pre_g, m_grasp, m_lift, m_pre_p, m_place, m_ret])
         self.pub_markers.publish(marker_array)

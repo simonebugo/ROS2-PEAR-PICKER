@@ -22,7 +22,7 @@ class PearPoseSource(Node):
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = 'world'
 
-        # Posa statica coerente con la pera sospesa nel world SDF.
+        # Static pose matching the pear in the fixed SDF world.
         msg.pose.position.x = 0.85
         msg.pose.position.y = 0.55
         msg.pose.position.z = 1.30

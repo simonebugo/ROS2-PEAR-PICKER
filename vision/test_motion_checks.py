@@ -27,11 +27,11 @@ class CartesianChecks(unittest.TestCase):
 
     def test_joint_branch_jump(self):
         self.path.points[-1].positions = [2., .1]
-        self.assertIn('Salto IK', cartesian_problem(self.result, self.state))
+        self.assertIn('IK jump', cartesian_problem(self.result, self.state))
 
     def test_jump_from_actual_start_is_checked(self):
         self.state.position = [1., 0.]
-        self.assertIn('Salto IK', cartesian_problem(self.result, self.state))
+        self.assertIn('IK jump', cartesian_problem(self.result, self.state))
 
     def test_failed_empty_or_nonfinite_result(self):
         self.result.error_code.val = -1

@@ -2,6 +2,9 @@
 .DS_Store
 *.pyc
 __pycache__/
+/build/
+/install/
+/log/
 /datasets/
 /.venv-yolo/
 /.venv-yolo-train/

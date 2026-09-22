@@ -100,7 +100,7 @@ class RandomizationTests(unittest.TestCase):
                 load_bounds(path)
             data['branch_height_m'], data['max_attempts'] = [10, 11], 2
             path.write_text(json.dumps(data), encoding='utf-8')
-            with self.assertRaisesRegex(RuntimeError, 'Nessuno scenario valido'):
+            with self.assertRaisesRegex(RuntimeError, 'No valid scenario'):
                 generate_scenario(SHARE, path, 42)
 
     def test_default_bound_corners_pass_camera_and_ik_filters(self):

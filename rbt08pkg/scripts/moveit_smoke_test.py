@@ -26,9 +26,9 @@ class MoveItSmokeTest(Node):
         self._client = ActionClient(self, MoveGroup, '/move_action')
 
     def run(self) -> bool:
-        self.get_logger().info('Attendo il server MoveIt /move_action...')
+        self.get_logger().info('Waiting for MoveIt server /move_action...')
         if not self._client.wait_for_server(timeout_sec=15.0):
-            self.get_logger().error('Server /move_action non disponibile.')
+            self.get_logger().error('Server /move_action unavailable.')
             return False
 
         constraints = Constraints()
@@ -53,12 +53,12 @@ class MoveItSmokeTest(Node):
         goal.planning_options.plan_only = False
 
         self.get_logger().info(
-            'Invio a MoveIt un singolo goal articolare per il robot Gazebo...'
+            'Sending one joint-space goal to MoveIt for the Gazebo robot...'
         )
         send_future = self._client.send_goal_async(goal)
         rclpy.spin_until_future_complete(self, send_future, timeout_sec=10.0)
         if not send_future.done():
-            self.get_logger().error('Timeout durante l’invio del goal a MoveIt.')
+            self.get_logger().error('Timeout sending the goal to MoveIt.')
             return False
         goal_handle = send_future.result()
         if goal_handle is None or not goal_handle.accepted:
@@ -68,22 +68,22 @@ class MoveItSmokeTest(Node):
         result_future = goal_handle.get_result_async()
         rclpy.spin_until_future_complete(self, result_future, timeout_sec=60.0)
         if not result_future.done():
-            self.get_logger().error('Timeout durante pianificazione o esecuzione.')
+            self.get_logger().error('Timeout during planning or execution.')
             return False
         result = result_future.result()
         if result is None:
-            self.get_logger().error('Timeout durante pianificazione o esecuzione.')
+            self.get_logger().error('Timeout during planning or execution.')
             return False
 
         error_code = result.result.error_code.val
         if error_code != 1:
             self.get_logger().error(
-                f'MoveIt ha terminato con codice errore {error_code}.'
+                f'MoveIt returned error code {error_code}.'
             )
             return False
 
         self.get_logger().info(
-            'TEST SUPERATO: traiettoria pianificata da MoveIt ed eseguita in Gazebo.'
+            'TEST PASSED: trajectory planned by MoveIt and executed in Gazebo.'
         )
         return True
 

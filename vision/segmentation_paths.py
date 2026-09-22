@@ -20,4 +20,4 @@ def add_segmentation_path():
         if (directory / 'pear_segmentation.py').is_file():
             sys.path.insert(0, str(directory))
             return directory
-    raise RuntimeError('Modulo pear_segmentation non trovato: copiare i sorgenti e ricompilare rbt08pkg.')
+    raise RuntimeError('pear_segmentation module not found: copy the sources and rebuild rbt08pkg.')

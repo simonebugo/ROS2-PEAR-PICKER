@@ -29,11 +29,11 @@ def capture_rgb(topic, timeout):
     subscription = node.create_subscription(Image, topic, received.append, qos_profile_sensor_data)
     try:
         deadline = time.monotonic() + timeout
-        print(f'Attendo un frame RGB su {topic} (timeout {timeout:g}s)...')
+        print(f'Waiting for an RGB frame on {topic} (timeout {timeout:g}s)...')
         while not received and time.monotonic() < deadline:
             rclpy.spin_once(node, timeout_sec=0.1)
         if not received:
-            raise RuntimeError('Nessun RGB ricevuto; verificare camera, topic e bridge.')
+            raise RuntimeError('No RGB received; check camera, topic and bridge.')
         message = received[0]
         image = CvBridge().imgmsg_to_cv2(message, desired_encoding='bgr8')
         header = {'frame_id': message.header.frame_id,
@@ -47,10 +47,10 @@ def capture_rgb(topic, timeout):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--image', type=Path, help='Immagine gia salvata; omettere per acquisire RGB da ROS.')
+    parser.add_argument('--image', type=Path, help='Saved image; omit to capture an RGB frame from ROS.')
     parser.add_argument('--topic', default='/orchard/camera/rgb/image_raw')
     parser.add_argument('--timeout', type=float, default=60.0)
-    parser.add_argument('--config', type=Path, help='YAML pear_segmentation.yaml, usa i default se omesso.')
+    parser.add_argument('--config', type=Path, help='pear_segmentation.yaml configuration; use defaults if omitted.')
     parser.add_argument('--hsv-lower', type=int, nargs=3)
     parser.add_argument('--hsv-upper', type=int, nargs=3)
     parser.add_argument('--output', type=Path, default=Path(__file__).resolve().parent / 'runs' / 'hsv_debug')
@@ -67,7 +67,7 @@ def main():
     if args.image:
         image = cv2.imread(str(args.image))
         if image is None:
-            parser.error(f'Immagine non leggibile: {args.image}')
+            parser.error(f'Cannot read image: {args.image}')
         header = None
     else:
         image, header = capture_rgb(args.topic, args.timeout)
@@ -79,7 +79,7 @@ def main():
     for name, output in (('rgb', image), ('mask', result.mask),
                          ('target_mask', result.target_mask), ('annotated', annotate(image, result))):
         if not cv2.imwrite(str(directory / f'{name}.png'), output):
-            raise RuntimeError(f'Impossibile salvare {name}.png')
+            raise RuntimeError(f'Cannot save {name}.png')
     report = {
         'header': header, 'config': asdict(config), 'processing_ms': round(elapsed, 2),
         'valid_candidates': result.valid_candidates,
@@ -87,7 +87,7 @@ def main():
     }
     (directory / 'report.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(json.dumps(report, indent=2))
-    print(f'Frame e maschere salvati in: {directory}')
+    print(f'Frame and masks saved to: {directory}')
 
 
 if __name__ == '__main__':

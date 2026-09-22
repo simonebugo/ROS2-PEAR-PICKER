@@ -22,25 +22,25 @@ class SegmentationConfig:
     def validate(self):
         for bounds in (self.hsv_lower, self.hsv_upper):
             if len(bounds) != 3:
-                raise ValueError('HSV deve contenere tre interi: H, S, V.')
+                raise ValueError('HSV must contain three integers: H, S, V.')
             for v, limit in zip(bounds, (179, 255, 255)):
                 if type(v) is not int or not 0 <= v <= limit:
-                    raise ValueError('HSV: H in [0,179], S e V in [0,255].')
+                    raise ValueError('HSV: H in [0,179], S and V in [0,255].')
         if any(lo > hi for lo, hi in zip(self.hsv_lower, self.hsv_upper)):
-            raise ValueError('Ogni soglia HSV inferiore deve essere <= alla superiore.')
+            raise ValueError('Each lower HSV threshold must be <= its upper threshold.')
         for size in (self.opening_size, self.closing_size):
             if type(size) is not int or not 1 <= size <= 31 or size % 2 != 1:
-                raise ValueError('Kernel: interi dispari in [1,31]; 1 disabilita il filtro.')
+                raise ValueError('Kernel sizes must be odd integers in [1,31]; 1 disables filtering.')
         if type(self.min_area_px) is not int or self.min_area_px < 1:
-            raise ValueError('min_area_px deve essere un intero positivo.')
+            raise ValueError('min_area_px must be a positive integer.')
         values = (self.max_area_fraction, self.min_aspect_ratio,
                   self.max_aspect_ratio, self.min_fill_ratio)
         if not all(math.isfinite(v) for v in values):
-            raise ValueError('I parametri geometrici devono essere finiti.')
+            raise ValueError('Geometry parameters must be finite.')
         if not 0 < self.max_area_fraction <= 1 or not 0 < self.min_fill_ratio <= 1:
-            raise ValueError('Le frazioni devono essere in (0,1].')
+            raise ValueError('Fractions must be in (0,1].')
         if not 0 < self.min_aspect_ratio <= self.max_aspect_ratio:
-            raise ValueError('Intervallo del rapporto larghezza/altezza non valido.')
+            raise ValueError('Invalid width/height ratio range.')
 
 
 @dataclass(frozen=True)
@@ -71,7 +71,7 @@ def segment_pear(image, config=SegmentationConfig()):
     config.validate()
     if (not isinstance(image, np.ndarray) or image.dtype != np.uint8
             or image.ndim != 3 or image.shape[2] != 3 or image.size == 0):
-        raise ValueError('Attesa immagine BGR uint8 non vuota con tre canali.')
+        raise ValueError('Expected a nonempty three-channel uint8 BGR image.')
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(hsv, np.array(config.hsv_lower, dtype=np.uint8),
                        np.array(config.hsv_upper, dtype=np.uint8))
@@ -104,7 +104,7 @@ def segment_pear(image, config=SegmentationConfig()):
 def annotate(image, result):
     annotated = image.copy()
     candidate = result.candidate
-    label = 'HSV: nessun target'
+    label = 'HSV: no target'
     if candidate is not None:
         x, y, w, h = candidate.x, candidate.y, candidate.width, candidate.height
         cv2.rectangle(annotated, (x, y), (x + w - 1, y + h - 1), (0, 255, 0), 2)

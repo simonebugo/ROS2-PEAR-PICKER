@@ -17,7 +17,7 @@ def prepare_scenario(context):
     if LaunchConfiguration('randomize').perform(context) != 'true':
         return []
     if LaunchConfiguration('pose_source').perform(context) != 'vision':
-        raise RuntimeError('randomize:=true richiede pose_source:=vision: il target deve provenire dalla camera.')
+        raise RuntimeError('randomize:=true requires pose_source:=vision: the target must come from the camera.')
     raw_seed = LaunchConfiguration('seed').perform(context)
     seed = secrets.randbits(32) if raw_seed == 'auto' else int(raw_seed)
     share = get_package_share_directory('rbt08pkg')
