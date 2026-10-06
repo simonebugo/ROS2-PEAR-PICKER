@@ -1,6 +1,7 @@
 """Seeded startup geometry and numerical reachability screening; no ROS targets.
 
-The generated manifest feeds Gazebo and MoveIt collision geometry only.
+The manifest feeds collision geometry and the known branch-based grasp yaw.
+The robot's target position still comes exclusively from vision.
 Numerical IK checks joint limits, not mesh collisions or dynamic execution.
 """
 import hashlib
@@ -127,14 +128,35 @@ class ArmKinematics:
                 q = np.clip(q + step, self.lower, self.upper)
         return None
 
-    def targets(self, pear):
+    def targets(self, pear, approach_yaw_world=None):
         p = (np.linalg.inv(self.base) @ np.r_[pear, 1.])[:3]
         yaw = math.atan2(p[1], p[0])
-        direction = np.array([math.cos(yaw), math.sin(yaw), 0.])
+        attitude = rotation((0., math.pi/2, yaw))
+        if approach_yaw_world is not None:
+            attitude = self.base[:3, :3].T @ rotation((0., math.pi/2, approach_yaw_world))
+        direction = attitude[:, 2]
         pre = p - .25*direction
-        return {name: self.base @ transform(xyz, (0., math.pi/2, yaw)) for name, xyz in (
+        # With the rotated wrist, the old 20 cm lift puts a finger into the
+        # fruit branch. Its 10 cm intermediate waypoint is collision-free in
+        # the live seed-42 scene; keep the first lift within that clearance.
+        lift_height = .10 if approach_yaw_world is not None else .20
+        targets = {}
+        for name, xyz in (
             ('pre_grasp', pre), ('approach_mid', p-.125*direction), ('grasp', p),
-            ('lift_mid', pre + [0., 0., .1]), ('lift', pre + [0., 0., .2]))}
+            ('lift_mid', pre + [0., 0., lift_height/2]),
+            ('lift', pre + [0., 0., lift_height])):
+            target = transform(xyz)
+            target[:3, :3] = attitude
+            targets[name] = self.base @ target
+        return targets
+
+
+def reference_approach_yaw(share):
+    """World yaw of the successful radial approach in the original world."""
+    base = ArmKinematics(share).base
+    root = ET.parse(Path(share)/'worlds/orchard.world.sdf')
+    pear = numbers(root.findtext(".//model[@name='pear']/pose"))[:3]
+    return math.atan2(pear[1]-base[1, 3], pear[0]-base[0, 3])
 
 
 def load_bounds(path):
@@ -181,7 +203,9 @@ def camera_accepts(share, arm, pear, radius, bounds):
     return True
 
 
-def generate_scenario(share, bounds_file, seed):
+def generate_scenario(share, bounds_file, seed, grasp_orientation='branch'):
+    if grasp_orientation not in ('branch', 'radial'):
+        raise ValueError('grasp_orientation must be branch or radial.')
     share = Path(share)
     config = load_bounds(bounds_file)
     sdf = ET.parse(share/'worlds/orchard.world.sdf')
@@ -196,6 +220,7 @@ def generate_scenario(share, bounds_file, seed):
     if config['pear_distance_m'][1] > length-.02:
         raise ValueError('pear_distance_m exceeds the usable branch length.')
     arm, rng, rejected = ArmKinematics(share), random.Random(seed), {}
+    nominal_yaw = reference_approach_yaw(share)
     for attempt in range(1, config['max_attempts']+1):
         sampled = {name: rng.uniform(*config[name]) for name in (
             'branch_height_m', 'branch_yaw_deg', 'branch_elevation_deg', 'pear_distance_m')}
@@ -210,8 +235,10 @@ def generate_scenario(share, bounds_file, seed):
                 not camera_accepts(share, arm, pear, pear_radius, config)):
             rejected['geometry_or_camera'] = rejected.get('geometry_or_camera', 0)+1
             continue
+        approach_yaw = (nominal_yaw + math.radians(sampled['branch_yaw_deg'])
+                        if grasp_orientation == 'branch' else None)
         solutions, previous = {}, None
-        for name, target in arm.targets(pear).items():
+        for name, target in arm.targets(pear, approach_yaw).items():
             q = arm.solve(target, previous)
             if q is None:
                 rejected['ik_'+name] = rejected.get('ik_'+name, 0)+1
@@ -226,7 +253,11 @@ def generate_scenario(share, bounds_file, seed):
                 'branch_pose_world': center.tolist()+[0., math.pi/2-elevation, yaw],
                 'branch_pose_tree': (center-np.array(tree_pose[:3])).tolist()+[0., math.pi/2-elevation, yaw],
                 'branch_length': length, 'branch_radius': branch_radius,
-                'pear_pose_world': pear.tolist()+[0., 0., 0.],
+                # The fruit stays vertical; its local frame follows the
+                # branch's horizontal yaw relative to the nominal world.
+                'pear_pose_world': pear.tolist()+[0., 0., math.radians(sampled['branch_yaw_deg'])],
+                'grasp_orientation': grasp_orientation,
+                'grasp_approach_yaw_world': approach_yaw,
                 'ik_joint_names': arm.names, 'ik_solutions': solutions,
                 'screening': 'numeric joint-limit IK and camera frustum; not collision-free path certification',
                 'input_sha256': {str(p.relative_to(share)): hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs},
@@ -238,6 +269,14 @@ def load_scenario(path):
     data = json.loads(Path(path).read_text(encoding='utf-8'))
     if data.get('version') != 1:
         raise ValueError('Unsupported scenario version.')
+    mode = data.get('grasp_orientation', 'radial')  # Older manifests used radial targets.
+    if mode not in ('branch', 'radial'):
+        raise ValueError('Invalid grasp_orientation in scenario.')
+    angle = data.get('grasp_approach_yaw_world')
+    if mode == 'branch' and (not isinstance(angle, (float, int)) or not math.isfinite(angle)):
+        raise ValueError('Missing or invalid branch-based grasp yaw.')
+    if mode == 'radial' and angle is not None:
+        raise ValueError('Radial scenario must not specify a fixed approach yaw.')
     for key in ('branch_pose_world', 'branch_pose_tree', 'pear_pose_world'):
         if len(data[key]) != 6 or not all(math.isfinite(v) for v in data[key]):
             raise ValueError(f'Invalid scenario pose: {key}')

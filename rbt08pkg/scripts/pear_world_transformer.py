@@ -26,7 +26,7 @@ class PearWorldTransformer(Node):
             'source_marker_topic': '/orchard/vision/surface_marker',
             'stream_timeout_s': 10.0,
             'estimate_center': True, 'fruit_radius_m': 0.075,
-            'publish_harvest_pose': False,
+            'publish_harvest_pose': False, 'pear_yaw_world': 0.0,
         }.items():
             self.declare_parameter(name, value, ParameterDescriptor(read_only=True))
         get = lambda name: self.get_parameter(name).value
@@ -34,10 +34,13 @@ class PearWorldTransformer(Node):
         self._timeout = get('stream_timeout_s')
         self._estimate_center = get('estimate_center')
         self._radius = get('fruit_radius_m')
+        self._pear_yaw_world = float(get('pear_yaw_world'))
         self._harvest_pub = (self.create_publisher(PoseStamped, '/harvest/pear_pose', 1)
                              if get('publish_harvest_pose') else None)
         if not math.isfinite(self._radius) or self._radius <= 0:
             raise ValueError('fruit_radius_m must be positive and finite.')
+        if not math.isfinite(self._pear_yaw_world):
+            raise ValueError('pear_yaw_world must be finite.')
         if not self._source or not self._target or not math.isfinite(self._timeout) or self._timeout <= 0:
             raise ValueError('Invalid frame or timeout.')
         # This lookup only depends on the static world -> fixed-camera chain.
@@ -159,7 +162,10 @@ class PearWorldTransformer(Node):
             pose = PoseStamped()
             pose.header = result.header
             pose.pose.position.x, pose.pose.position.y, pose.pose.position.z = self._center_result
-            pose.pose.orientation.w = 1.0
+            # Position is observed by RGB-D. The vertical fruit's yaw is
+            # supplied by the known scenario, not estimated by this camera.
+            pose.pose.orientation.z = math.sin(self._pear_yaw_world / 2.0)
+            pose.pose.orientation.w = math.cos(self._pear_yaw_world / 2.0)
             self._harvest_pub.publish(pose)
 
     def _report(self):

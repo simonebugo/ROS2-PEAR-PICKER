@@ -47,6 +47,16 @@ def euler_to_quaternion(roll, pitch, yaw):
     return Quaternion(x=qx, y=qy, z=qz, w=qw)
 
 
+def multiply_quaternions(a, b):
+    """Compose rotations: apply b in the pear frame, then a in the parent frame."""
+    return Quaternion(
+        x=a.w*b.x + a.x*b.w + a.y*b.z - a.z*b.y,
+        y=a.w*b.y - a.x*b.z + a.y*b.w + a.z*b.x,
+        z=a.w*b.z + a.x*b.y - a.y*b.x + a.z*b.w,
+        w=a.w*b.w - a.x*b.x - a.y*b.y - a.z*b.z,
+    )
+
+
 class PickPlaceManager(Node):
     """
     Coordinate target poses, MoveIt trajectories and the physical grasp lifecycle.
@@ -59,6 +69,16 @@ class PickPlaceManager(Node):
         super().__init__('pick_place_manager')
         self.declare_parameter('require_vision_status', False)
         self.declare_parameter('max_pose_age_s', 5.0)
+        self.declare_parameter('grasp_orientation', 'radial')
+        self.declare_parameter('approach_yaw_world', 0.0)
+        self.declare_parameter('nominal_grasp_yaw_world', 0.0)
+        self._grasp_orientation = self.get_parameter('grasp_orientation').value
+        self._approach_yaw_world = float(self.get_parameter('approach_yaw_world').value)
+        self._nominal_grasp_yaw_world = float(self.get_parameter('nominal_grasp_yaw_world').value)
+        if (self._grasp_orientation not in ('branch', 'radial') or
+                not all(math.isfinite(v) for v in
+                        (self._approach_yaw_world, self._nominal_grasp_yaw_world))):
+            raise ValueError('Invalid grasp orientation mode or world yaw.')
         self._require_vision_status = bool(self.get_parameter('require_vision_status').value)
         self._max_pose_age = float(self.get_parameter('max_pose_age_s').value)
         if not math.isfinite(self._max_pose_age) or self._max_pose_age <= 0:
@@ -133,6 +153,10 @@ class PickPlaceManager(Node):
         self.create_timer(1.0, self.publish_basket_poses)
 
         self.get_logger().info('Pick-and-place manager initialized.')
+        self.get_logger().info(
+            f'Grasp orientation: {self._grasp_orientation}; '
+            f'configured world yaw={math.degrees(self._approach_yaw_world):.2f} deg '
+            '(used only in branch mode). Target position comes from /harvest/pear_pose.')
 
 
         self._move_group_client = ActionClient(self, MoveGroup, '/move_action')
@@ -653,16 +677,30 @@ class PickPlaceManager(Node):
         if not all(math.isfinite(v) for v in (px, py, pz)):
             return
 
-        # Radial approach in the base XY plane.
+        # Standalone/legacy mode: radial approach in the base XY plane.
         approach_yaw = math.atan2(py, px)
 
         # Grasp-frame +Z points horizontally toward the fruit; +Y keeps
         # the fingers side by side. The wrist stays behind the grasp frame.
         grasp_orientation = euler_to_quaternion(0.0, math.pi / 2.0, approach_yaw)
+        if self._grasp_orientation == 'branch':
+            # The camera supplies centre position; the known scenario sets
+            # pear orientation in that PoseStamped. The fixed pear->gripper
+            # rotation is the successful nominal grasp in the original world.
+            pear_q = pear_in_base.pose.orientation
+            norm = math.sqrt(sum(v*v for v in (pear_q.x, pear_q.y, pear_q.z, pear_q.w)))
+            if not math.isfinite(norm) or abs(norm-1.0) > 1e-3:
+                self.get_logger().warn('Invalid pear orientation; grasp target unavailable.')
+                return
+            pear_to_grasp = euler_to_quaternion(0.0, math.pi / 2.0, self._nominal_grasp_yaw_world)
+            grasp_orientation = multiply_quaternions(pear_q, pear_to_grasp)
 
-        dist_xy = math.sqrt(px * px + py * py)
-        dir_x = px / dist_xy if dist_xy > 0 else 1.0
-        dir_y = py / dist_xy if dist_xy > 0 else 0.0
+        # Local +Z is the approach axis. Pre-grasp and retreat must follow the
+        # chosen attitude, including when world and base_link differ.
+        q = grasp_orientation
+        dir_x = 2.0 * (q.x*q.z + q.w*q.y)
+        dir_y = 2.0 * (q.y*q.z - q.w*q.x)
+        dir_z = 1.0 - 2.0 * (q.x*q.x + q.y*q.y)
 
         grasp_pose = PoseStamped()
         grasp_pose.header.stamp = self.get_clock().now().to_msg()
@@ -677,20 +715,21 @@ class PickPlaceManager(Node):
         pre_grasp_pose.pose.position = Point(
             x=px - dir_x * offset_pre,
             y=py - dir_y * offset_pre,
-            z=pz
+            z=pz - dir_z * offset_pre
         )
         pre_grasp_pose.pose.orientation = grasp_orientation
 
-        # Lift: after retreating to the pre-grasp clearance, raise the pear by
-        # 20 cm. Raising it directly at the grasp position would cross the
-        # fruit branch above it.
-        offset_lift = 0.20
+        # The branch-oriented wrist has less vertical clearance from the fruit
+        # branch. MoveIt rejected the old 20 cm endpoint (left finger versus
+        # branch); its 10 cm intermediate target passed the live IK check.
+        # Preserve the previous 20 cm lift in standalone/radial mode.
+        offset_lift = 0.10 if self._grasp_orientation == 'branch' else 0.20
         lift_pose = PoseStamped()
         lift_pose.header = grasp_pose.header
         lift_pose.pose.position = Point(
             x=pre_grasp_pose.pose.position.x,
             y=pre_grasp_pose.pose.position.y,
-            z=pz + offset_lift,
+            z=pre_grasp_pose.pose.position.z + offset_lift,
         )
         lift_pose.pose.orientation = grasp_orientation
 

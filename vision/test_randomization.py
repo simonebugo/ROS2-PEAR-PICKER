@@ -11,7 +11,7 @@ import numpy as np
 from segmentation_paths import add_segmentation_path
 
 add_segmentation_path()
-from orchard_randomization import ArmKinematics, generate_scenario, load_bounds, load_scenario, rotation, rotation_error, write_scenario
+from orchard_randomization import ArmKinematics, generate_scenario, load_bounds, load_scenario, reference_approach_yaw, rotation, rotation_error, write_scenario
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,12 +53,58 @@ class RandomizationTests(unittest.TestCase):
 
     def test_ik_solutions_reach_each_goal_with_joint_limits(self):
         for scenario in self.scenarios:
-            targets = self.arm.targets(scenario['pear_pose_world'][:3])
+            targets = self.arm.targets(scenario['pear_pose_world'][:3], scenario['grasp_approach_yaw_world'])
             for name, q in scenario['ik_solutions'].items():
                 self.assertTrue(np.all(q >= self.arm.lower) and np.all(q <= self.arm.upper))
                 actual, _ = self.arm.forward(q)
                 self.assertLess(np.linalg.norm(actual[:3, 3]-targets[name][:3, 3]), .0005)
                 self.assertLess(np.linalg.norm(rotation_error(targets[name][:3, :3], actual[:3, :3])), .003)
+
+    def test_branch_yaw_rotates_attitude_and_retreat_together(self):
+        nominal = reference_approach_yaw(SHARE)
+        for s in self.scenarios:
+            yaw = s['grasp_approach_yaw_world']
+            self.assertAlmostEqual(yaw-nominal, np.deg2rad(s['sampled']['branch_yaw_deg']))
+            goals = self.arm.targets(s['pear_pose_world'][:3], yaw)
+            grasp, pre = goals['grasp'], goals['pre_grasp']
+            np.testing.assert_allclose(grasp[:3, :3], rotation((0, np.pi/2, yaw)), atol=1e-12)
+            np.testing.assert_allclose(grasp[:3, 3]-pre[:3, 3], .25*grasp[:3, 2], atol=1e-12)
+            np.testing.assert_allclose(goals['lift'][:3, 3]-pre[:3, 3], [0, 0, .1], atol=1e-12)
+            np.testing.assert_allclose(s['pear_pose_world'][3:5], [0, 0])
+            self.assertAlmostEqual(s['pear_pose_world'][5], np.deg2rad(s['sampled']['branch_yaw_deg']))
+            np.testing.assert_allclose(
+                grasp[:3, :3],
+                rotation(s['pear_pose_world'][3:]) @ rotation((0, np.pi/2, nominal)),
+                atol=1e-12)
+
+    def test_branch_attitude_is_independent_of_measured_position(self):
+        yaw = reference_approach_yaw(SHARE)+.2
+        a = self.arm.targets([.85, .55, 1.3], yaw)['grasp']
+        b = self.arm.targets([.83, .57, 1.32], yaw)['grasp']
+        np.testing.assert_allclose(a[:3, :3], b[:3, :3])
+        np.testing.assert_allclose(b[:3, 3], [.83, .57, 1.32])
+
+    def test_radial_mode_preserves_previous_geometry(self):
+        s = generate_scenario(SHARE, BOUNDS, 42, 'radial')
+        self.assertIsNone(s['grasp_approach_yaw_world'])
+        p = np.array(s['pear_pose_world'][:3])
+        goals = self.arm.targets(p)
+        np.testing.assert_allclose(goals['lift'][:3, 3]-goals['pre_grasp'][:3, 3], [0, 0, .2])
+        np.testing.assert_allclose(goals['grasp'][:3, 2], [*list(p[:2]/np.linalg.norm(p[:2])), 0], atol=1e-12)
+        nominal = self.arm.targets([.85, .55, 1.3])
+        branch = self.arm.targets([.85, .55, 1.3], reference_approach_yaw(SHARE))
+        for key in ('pre_grasp', 'approach_mid', 'grasp'):
+            np.testing.assert_allclose(nominal[key], branch[key], atol=1e-12)
+
+    def test_wide_and_edge_oriented_targets_are_reachable(self):
+        for profile in ('wide', 'edge'):
+            for seed in (7, 42, 123):
+                s = generate_scenario(SHARE, SHARE/f'config/orchard_randomization_{profile}.json', seed)
+                goals = self.arm.targets(s['pear_pose_world'][:3], s['grasp_approach_yaw_world'])
+                for name, q in s['ik_solutions'].items():
+                    actual, _ = self.arm.forward(q)
+                    self.assertLess(np.linalg.norm(actual[:3, 3]-goals[name][:3, 3]), .0005)
+                    self.assertLess(np.linalg.norm(rotation_error(goals[name][:3, :3], actual[:3, :3])), .003)
 
     def test_jacobian_matches_finite_difference(self):
         q = np.array([.6, -.4, .5, .2, 1.2, -.9])
@@ -103,7 +149,7 @@ class RandomizationTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'No valid scenario'):
                 generate_scenario(SHARE, path, 42)
 
-    def test_default_bound_corners_pass_camera_and_ik_filters(self):
+    def test_legacy_radial_bound_corners_still_pass(self):
         data = load_bounds(BOUNDS)
         names = ('branch_height_m', 'branch_yaw_deg', 'branch_elevation_deg', 'pear_distance_m')
         with tempfile.TemporaryDirectory() as directory:
@@ -112,8 +158,20 @@ class RandomizationTests(unittest.TestCase):
                 corner = dict(data, max_attempts=1)
                 corner.update({name: [v, v] for name, v in zip(names, values)})
                 path.write_text(json.dumps(corner), encoding='utf-8')
-                scenario = generate_scenario(SHARE, path, 0)
+                scenario = generate_scenario(SHARE, path, 0, 'radial')
                 self.assertEqual(scenario['attempt'], 1)
+
+    def test_branch_corner_without_ik_is_rejected_explicitly(self):
+        # A reachable point with radial attitude need not be reachable with
+        # the requested branch attitude. Never silently fall back to radial.
+        data = load_bounds(BOUNDS)
+        data.update(branch_height_m=[1.44, 1.44], branch_yaw_deg=[-12., -12.],
+                    branch_elevation_deg=[-5., -5.], pear_distance_m=[.44, .44], max_attempts=1)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'bounds.json'
+            path.write_text(json.dumps(data), encoding='utf-8')
+            with self.assertRaisesRegex(RuntimeError, 'ik_pre_grasp'):
+                generate_scenario(SHARE, path, 0, 'branch')
 
 
 if __name__ == '__main__':

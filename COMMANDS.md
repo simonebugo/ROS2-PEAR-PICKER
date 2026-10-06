@@ -91,6 +91,7 @@ Terminal A — randomized **wide** scene with a reproducible seed:
 ```bash
 ros2 launch rbt10pkg_mit integrated_pick_place.launch.py \
   pose_source:=vision randomize:=true seed:=42 \
+  grasp_orientation:=branch \
   randomization_config:="$(ros2 pkg prefix rbt08pkg)/share/rbt08pkg/config/orchard_randomization_wide.json"
 ```
 
@@ -118,10 +119,15 @@ export SCENARIO=/tmp/pear_orchard_42_REPLACE_ME/scenario.json
 /usr/bin/python3 "$REPO/vision/check_randomized_runtime.py" "$SCENARIO"
 ```
 
-Expect `SCENE ALIGNMENT OK`, `MOVEIT IK OK`, `VISION OK` and
+Expect `SCENE ALIGNMENT OK`, `MOVEIT IK OK`, `VISION OK`, `GRASP ORIENTATION OK` and
 `RANDOMIZED PREFLIGHT OK`. The alignment check expects the intentional 15 mm
 radial branch clearance in MoveIt. This test does not command motion. If it
 fails, keep its message and manifest and resolve the failure before triggering.
+The IK check tries the preceding MoveIt solution and the manifest's numerical
+seed. If collision-aware IK fails, diagnostic-only queries report whether pure
+IK exists and list contacts from `/check_state_validity`. These queries never
+authorize motion or count as a passed preflight. An error such as `-31` alone
+does not establish whether collision rejection or IK search caused the failure.
 
 Trigger exactly one cycle:
 
@@ -168,6 +174,70 @@ ros2 launch rbt10pkg_mit integrated_pick_place.launch.py pose_source:=static
 For the two fixed-world modes, no random manifest is generated. Use readiness
 checks and the trigger, not the randomized preflight. Randomization deliberately
 requires `pose_source:=vision`.
+
+### Branch-based grasp orientation
+
+The integrated launch defaults to `grasp_orientation:=branch`. It rotates the
+vertical pear's local frame by the sampled horizontal branch yaw. `/harvest/pear_pose`
+has a camera-estimated position and a scenario-supplied yaw; this orientation
+is not estimated from the image. The manager composes that pear orientation with
+the successful nominal pear-to-gripper attitude. The approach stays horizontal,
+the pear stays vertical, and the fingers retain
+their nominal inclination. This preserves the original relative approach angle;
+it does not force the gripper perpendicular to the branch. The camera supplies
+the target position; branch orientation is known simulation information.
+The branch mode first retreats 25 cm and then lifts 10 cm; the older 20 cm
+endpoint caused a left-finger/branch collision in the live seed-42 preflight.
+Radial mode retains its previous 20 cm lift.
+
+Only the scenario's orientation is added to the vision-based pear pose; the
+manifest's pear position is never published as the robot target. Inspect
+`/harvest/pear_pose` and `/harvest/grasp_pose` to see the two quaternions.
+The manager transforms the pear pose to `base_link` and uses gripper +Z
+for both the approach and the first withdrawal. The lift follows withdrawal.
+
+The generator screens IK with the same oriented targets. Some combinations
+previously accepted in radial mode can fail with branch mode; the generator
+rejects those samples and tries another one. Thus a seed can produce different
+geometry between modes or software versions. Numerical IK is not a collision
+or full-trajectory guarantee; run the live preflight before the first trigger.
+
+Offline regression tests (no running simulation needed):
+
+```bash
+cd "$WS"
+/usr/bin/python3 "$REPO/vision/test_randomization.py" -v
+/usr/bin/python3 "$REPO/vision/test_pick_target.py" -v
+/usr/bin/python3 "$REPO/vision/test_motion_checks.py" -v
+```
+
+Inspect the configured angle and targets while the integrated launch is running:
+
+```bash
+ros2 param get /pick_place_manager grasp_orientation
+ros2 param get /pick_place_manager approach_yaw_world
+ros2 param get /pick_place_manager nominal_grasp_yaw_world
+ros2 topic echo /harvest/pear_pose --once
+ros2 topic echo /harvest/grasp_pose --once
+ros2 topic echo /harvest/pre_grasp_pose --once
+```
+
+In RViz add a `Pose` display on `/harvest/grasp_pose` and choose `Axes` to see
+the gripper frame; +Z is its approach axis. The existing target markers also
+show the approach direction. With different seeds, compare the logged branch
+yaw delta with the grasp world yaw: their difference stays constant. Movement
+of the fruit in the image changes target position, not this configured yaw.
+
+To return to the previous approach, stop the launch and restart with:
+
+```bash
+ros2 launch rbt10pkg_mit integrated_pick_place.launch.py \
+  pose_source:=vision randomize:=true seed:=42 grasp_orientation:=radial \
+  randomization_config:="$(ros2 pkg prefix rbt08pkg)/share/rbt08pkg/config/orchard_randomization_wide.json"
+```
+
+No rebuild is needed when switching modes. A standalone `pick_place_manager.py`
+still defaults to radial mode for the separate MoveIt/RViz demonstration.
 
 ## 4. Visualization during the integrated demo
 

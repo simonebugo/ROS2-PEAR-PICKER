@@ -195,6 +195,10 @@ class PlanningSceneSpawner(Node):
             x, y, z = self.scenario['pear_pose_world'][:3]
             pose_pear.position.x, pose_pear.position.y, pose_pear.position.z = x, y, z
             pose_pear_neck.position.x, pose_pear_neck.position.y, pose_pear_neck.position.z = x, y, z+.065
+            pear_q = euler_to_quaternion(*self.scenario['pear_pose_world'][3:])
+            for pear_part in (pose_pear, pose_pear_neck):
+                pear_part.orientation.x, pear_part.orientation.y = pear_q[:2]
+                pear_part.orientation.z, pear_part.orientation.w = pear_q[2:]
             pear.primitive_poses = [pose_pear, pose_pear_neck]
 
         scene_msg.world.collision_objects = objects

@@ -15,6 +15,13 @@ The current vision system uses a fixed RGB-D camera and OpenCV color segmentatio
 
 Gazebo handles the physical attachment and release; MoveIt's Planning Scene represents the same objects for collision-aware planning. The camera-derived target is passed through `/harvest/pear_pose`, so the motion sequence does not depend on a hard-coded pear position.
 
+The integrated launch rotates the vertical pear's reference frame with the
+known horizontal branch angle. Its position comes from the camera; its yaw
+comes from the scenario, not from vision. The gripper is oriented relative to
+that pear frame. Pre-grasp and withdrawal follow the resulting direction.
+The previous robot-to-pear radial approach remains available through
+`grasp_orientation:=radial`.
+
 > **Image placeholder:** RGB image with pear detection and the estimated target shown in RViz.
 
 ## Main components
