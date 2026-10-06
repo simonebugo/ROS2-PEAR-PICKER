@@ -178,12 +178,12 @@ requires `pose_source:=vision`.
 ### Branch-based grasp orientation
 
 The integrated launch defaults to `grasp_orientation:=branch`. It rotates the
-vertical pear's local frame by the sampled horizontal branch yaw. `/harvest/pear_pose`
-has a camera-estimated position and a scenario-supplied yaw; this orientation
-is not estimated from the image. The manager composes that pear orientation with
-the successful nominal pear-to-gripper attitude. The approach stays horizontal,
-the pear stays vertical, and the fingers retain
-their nominal inclination. This preserves the original relative approach angle;
+pear's local frame by the sampled branch yaw and elevation (pitch, at most 5 degrees
+in the supplied profiles). `/harvest/pear_pose` has a camera-estimated position
+and a scenario-supplied orientation; the camera does not estimate that rotation.
+The manager composes the pear orientation with the successful nominal
+pear-to-gripper attitude. The approach can therefore tilt slightly vertically,
+while retaining the nominal relative finger attitude. This preserves the original relative approach angle;
 it does not force the gripper perpendicular to the branch. The camera supplies
 the target position; branch orientation is known simulation information.
 The branch mode first retreats 25 cm and then lifts 10 cm; the older 20 cm
@@ -224,9 +224,9 @@ ros2 topic echo /harvest/pre_grasp_pose --once
 
 In RViz add a `Pose` display on `/harvest/grasp_pose` and choose `Axes` to see
 the gripper frame; +Z is its approach axis. The existing target markers also
-show the approach direction. With different seeds, compare the logged branch
-yaw delta with the grasp world yaw: their difference stays constant. Movement
-of the fruit in the image changes target position, not this configured yaw.
+show the approach direction. With different seeds, compare the grasp frame's
+orientation with both sampled yaw and elevation. Movement of the fruit in the
+image changes target position, not this scenario-supplied orientation.
 
 To return to the previous approach, stop the launch and restart with:
 

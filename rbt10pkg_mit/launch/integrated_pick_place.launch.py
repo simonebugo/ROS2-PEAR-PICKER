@@ -22,6 +22,7 @@ def prepare_scenario(context):
     if LaunchConfiguration('randomize').perform(context) != 'true':
         return [SetLaunchConfiguration('orchard_approach_yaw_world', str(reference_y)),
                 SetLaunchConfiguration('orchard_pear_yaw_world', '0.0'),
+                SetLaunchConfiguration('orchard_pear_pitch_world', '0.0'),
                 SetLaunchConfiguration('orchard_nominal_grasp_yaw_world', str(reference_yaw))]
     if LaunchConfiguration('pose_source').perform(context) != 'vision':
         raise RuntimeError('randomize:=true requires pose_source:=vision: the target must come from the camera.')
@@ -35,6 +36,7 @@ def prepare_scenario(context):
         SetLaunchConfiguration('orchard_scene_config', manifest),
         SetLaunchConfiguration('orchard_approach_yaw_world', str(scenario['grasp_approach_yaw_world'] or 0.0)),
         SetLaunchConfiguration('orchard_pear_yaw_world', str(scenario['pear_pose_world'][5])),
+        SetLaunchConfiguration('orchard_pear_pitch_world', str(scenario['pear_pose_world'][4])),
         SetLaunchConfiguration('orchard_nominal_grasp_yaw_world', str(reference_yaw)),
         LogInfo(msg=f'ORCHARD seed={seed}, attempt={scenario["attempt"]}, pear={scenario["pear_pose_world"][:3]}'),
         LogInfo(msg=f'ORCHARD scenario={manifest} (position from vision; orientation mode={mode})'),
@@ -111,6 +113,7 @@ def generate_launch_description():
                 'start_camera': 'false', 'rviz': 'false',
                 'publish_harvest_pose': 'true',
                 'pear_yaw_world': LaunchConfiguration('orchard_pear_yaw_world'),
+                'pear_pitch_world': LaunchConfiguration('orchard_pear_pitch_world'),
             }.items(),
             condition=IfCondition(vision),
         ),

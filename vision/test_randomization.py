@@ -49,11 +49,13 @@ class RandomizationTests(unittest.TestCase):
             pivot = center-s['branch_length']/2*direction
             np.testing.assert_allclose(pivot, [1.35, .55, s['sampled']['branch_height_m']], atol=1e-12)
             attached = pivot+s['sampled']['pear_distance_m']*direction
-            np.testing.assert_allclose(np.array(s['pear_pose_world'][:3])+[0, 0, .18], attached, atol=1e-12)
+            np.testing.assert_allclose(np.array(s['pear_pose_world'][:3]) +
+                                       rotation(s['pear_pose_world'][3:]) @ [0, 0, .18], attached, atol=1e-12)
 
     def test_ik_solutions_reach_each_goal_with_joint_limits(self):
         for scenario in self.scenarios:
-            targets = self.arm.targets(scenario['pear_pose_world'][:3], scenario['grasp_approach_yaw_world'])
+            targets = self.arm.targets(scenario['pear_pose_world'][:3], scenario['grasp_approach_yaw_world'],
+                                       scenario['pear_pose_world'][3:])
             for name, q in scenario['ik_solutions'].items():
                 self.assertTrue(np.all(q >= self.arm.lower) and np.all(q <= self.arm.upper))
                 actual, _ = self.arm.forward(q)
@@ -65,12 +67,14 @@ class RandomizationTests(unittest.TestCase):
         for s in self.scenarios:
             yaw = s['grasp_approach_yaw_world']
             self.assertAlmostEqual(yaw-nominal, np.deg2rad(s['sampled']['branch_yaw_deg']))
-            goals = self.arm.targets(s['pear_pose_world'][:3], yaw)
+            goals = self.arm.targets(s['pear_pose_world'][:3], yaw, s['pear_pose_world'][3:])
             grasp, pre = goals['grasp'], goals['pre_grasp']
-            np.testing.assert_allclose(grasp[:3, :3], rotation((0, np.pi/2, yaw)), atol=1e-12)
+            np.testing.assert_allclose(grasp[:3, :3],
+                                       rotation(s['pear_pose_world'][3:]) @ rotation((0, np.pi/2, nominal)), atol=1e-12)
             np.testing.assert_allclose(grasp[:3, 3]-pre[:3, 3], .25*grasp[:3, 2], atol=1e-12)
             np.testing.assert_allclose(goals['lift'][:3, 3]-pre[:3, 3], [0, 0, .1], atol=1e-12)
-            np.testing.assert_allclose(s['pear_pose_world'][3:5], [0, 0])
+            self.assertAlmostEqual(s['pear_pose_world'][3], 0.)
+            self.assertAlmostEqual(s['pear_pose_world'][4], np.deg2rad(s['sampled']['branch_elevation_deg']))
             self.assertAlmostEqual(s['pear_pose_world'][5], np.deg2rad(s['sampled']['branch_yaw_deg']))
             np.testing.assert_allclose(
                 grasp[:3, :3],
@@ -100,7 +104,8 @@ class RandomizationTests(unittest.TestCase):
         for profile in ('wide', 'edge'):
             for seed in (7, 42, 123):
                 s = generate_scenario(SHARE, SHARE/f'config/orchard_randomization_{profile}.json', seed)
-                goals = self.arm.targets(s['pear_pose_world'][:3], s['grasp_approach_yaw_world'])
+                goals = self.arm.targets(s['pear_pose_world'][:3], s['grasp_approach_yaw_world'],
+                                         s['pear_pose_world'][3:])
                 for name, q in s['ik_solutions'].items():
                     actual, _ = self.arm.forward(q)
                     self.assertLess(np.linalg.norm(actual[:3, 3]-goals[name][:3, 3]), .0005)

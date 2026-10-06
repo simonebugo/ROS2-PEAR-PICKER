@@ -1,6 +1,6 @@
 """Seeded startup geometry and numerical reachability screening; no ROS targets.
 
-The manifest feeds collision geometry and the known branch-based grasp yaw.
+The manifest feeds collision geometry and the known branch-based fruit attitude.
 The robot's target position still comes exclusively from vision.
 Numerical IK checks joint limits, not mesh collisions or dynamic execution.
 """
@@ -128,12 +128,14 @@ class ArmKinematics:
                 q = np.clip(q + step, self.lower, self.upper)
         return None
 
-    def targets(self, pear, approach_yaw_world=None):
+    def targets(self, pear, approach_yaw_world=None, pear_rpy_world=(0., 0., 0.)):
         p = (np.linalg.inv(self.base) @ np.r_[pear, 1.])[:3]
         yaw = math.atan2(p[1], p[0])
         attitude = rotation((0., math.pi/2, yaw))
         if approach_yaw_world is not None:
-            attitude = self.base[:3, :3].T @ rotation((0., math.pi/2, approach_yaw_world))
+            nominal_yaw = approach_yaw_world - pear_rpy_world[2]
+            attitude = self.base[:3, :3].T @ (
+                rotation(pear_rpy_world) @ rotation((0., math.pi/2, nominal_yaw)))
         direction = attitude[:, 2]
         pre = p - .25*direction
         # With the rotated wrist, the old 20 cm lift puts a finger into the
@@ -183,15 +185,17 @@ def load_bounds(path):
     return data
 
 
-def camera_accepts(share, arm, pear, radius, bounds):
+def camera_accepts(share, arm, pear, radius, bounds, pear_attitude=None):
     cam = ET.parse(Path(share)/'urdf/camera.gazebo').find('.//camera')
     width, height = int(cam.findtext('image/width')), int(cam.findtext('image/height'))
     f = width / (2*math.tan(float(cam.findtext('horizontal_fov'))/2))
     near, far = float(cam.findtext('clip/near')), float(cam.findtext('clip/far'))
     inverse = np.linalg.inv(arm.fixed_transform('table_camera_link_optical'))
+    if pear_attitude is None:
+        pear_attitude = np.eye(3)
     # Bound the body, neck and visible stem with spheres, including image margin.
     for offset, r in ((0., radius), (.065, .052), (.14, .041)):
-        x, y, z = (inverse @ np.r_[np.array(pear)+[0., 0., offset], 1.])[:3]
+        x, y, z = (inverse @ np.r_[np.array(pear)+pear_attitude @ [0., 0., offset], 1.])[:3]
         if not near < z-r or z+r >= far:
             return False
         margin = bounds['image_margin_px']
@@ -229,16 +233,19 @@ def generate_scenario(share, bounds_file, seed, grasp_orientation='branch'):
         direction = np.array([math.cos(elevation)*math.cos(yaw), math.cos(elevation)*math.sin(yaw), math.sin(elevation)])
         pivot = np.array([tree_pose[0], tree_pose[1], sampled['branch_height_m']])
         center = pivot + length/2*direction
-        # Keep the pear vertical, with its stem tip at the selected branch point.
-        pear = pivot + sampled['pear_distance_m']*direction - [0., 0., .18]
+        # Tilt the pear about its body centre while keeping the local stem tip
+        # exactly at the sampled attachment point on the branch.
+        pear_rpy = (0., elevation, math.radians(sampled['branch_yaw_deg']))
+        pear_attitude = rotation(pear_rpy)
+        pear = pivot + sampled['pear_distance_m']*direction - pear_attitude @ [0., 0., .18]
         if (pear[0] >= tree_pose[0]-.2 or pear[2] <= .2 or
-                not camera_accepts(share, arm, pear, pear_radius, config)):
+                not camera_accepts(share, arm, pear, pear_radius, config, pear_attitude)):
             rejected['geometry_or_camera'] = rejected.get('geometry_or_camera', 0)+1
             continue
         approach_yaw = (nominal_yaw + math.radians(sampled['branch_yaw_deg'])
                         if grasp_orientation == 'branch' else None)
         solutions, previous = {}, None
-        for name, target in arm.targets(pear, approach_yaw).items():
+        for name, target in arm.targets(pear, approach_yaw, pear_rpy).items():
             q = arm.solve(target, previous)
             if q is None:
                 rejected['ik_'+name] = rejected.get('ik_'+name, 0)+1
@@ -253,9 +260,7 @@ def generate_scenario(share, bounds_file, seed, grasp_orientation='branch'):
                 'branch_pose_world': center.tolist()+[0., math.pi/2-elevation, yaw],
                 'branch_pose_tree': (center-np.array(tree_pose[:3])).tolist()+[0., math.pi/2-elevation, yaw],
                 'branch_length': length, 'branch_radius': branch_radius,
-                # The fruit stays vertical; its local frame follows the
-                # branch's horizontal yaw relative to the nominal world.
-                'pear_pose_world': pear.tolist()+[0., 0., math.radians(sampled['branch_yaw_deg'])],
+                'pear_pose_world': pear.tolist()+list(pear_rpy),
                 'grasp_orientation': grasp_orientation,
                 'grasp_approach_yaw_world': approach_yaw,
                 'ik_joint_names': arm.names, 'ik_solutions': solutions,

@@ -130,12 +130,26 @@ class GraspAttitudeChecks(unittest.TestCase):
         for name in ('pub_pre_grasp', 'pub_grasp', 'pub_lift'):
             setattr(self.node, name, NS(publish=lambda msg: None))
 
-    def update(self, xyz):
+    def update(self, xyz, pitch=0.):
         msg = self.stamped()
         msg.pose.position = NS(x=xyz[0], y=xyz[1], z=xyz[2])
-        msg.pose.orientation = NS(x=0., y=0., z=math.sin(.1), w=math.cos(.1))
+        msg.pose.orientation = self.scope['euler_to_quaternion'](0., pitch, .2)
         self.scope['pear_pose_callback'](self.node, msg)
         return self.node.latest_poses
+
+    def test_branch_pitch_tilts_grasp_and_pre_grasp_axis(self):
+        pre, grasp, *_ = self.update((.85, .55, 1.3), pitch=.08)
+        q = grasp.pose.orientation
+        axis = (2*(q.x*q.z+q.w*q.y), 2*(q.y*q.z-q.w*q.x), 1-2*(q.x*q.x+q.y*q.y))
+        self.assertGreater(abs(axis[2]), .05)
+        for key, direction in zip(('x', 'y', 'z'), axis):
+            self.assertAlmostEqual(getattr(grasp.pose.position, key)-getattr(pre.pose.position, key), .25*direction)
+        pear_in_base = self.apply_tf(self.node._pear_msg, self.tf)
+        expected = self.scope['multiply_quaternions'](
+            pear_in_base.pose.orientation,
+            self.scope['euler_to_quaternion'](0., math.pi/2, self.node._nominal_grasp_yaw_world))
+        for key in ('x', 'y', 'z', 'w'):
+            self.assertAlmostEqual(getattr(q, key), getattr(expected, key))
 
     def test_branch_composes_observed_center_known_pear_yaw_and_relative_grasp(self):
         pre, grasp, lift, *_ = self.update((.85, .55, 1.3))

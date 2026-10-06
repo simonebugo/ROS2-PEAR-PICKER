@@ -680,8 +680,8 @@ class PickPlaceManager(Node):
         # Standalone/legacy mode: radial approach in the base XY plane.
         approach_yaw = math.atan2(py, px)
 
-        # Grasp-frame +Z points horizontally toward the fruit; +Y keeps
-        # the fingers side by side. The wrist stays behind the grasp frame.
+        # In radial mode +Z is horizontal. In branch mode the pear attitude
+        # can tilt +Z vertically with the known branch elevation.
         grasp_orientation = euler_to_quaternion(0.0, math.pi / 2.0, approach_yaw)
         if self._grasp_orientation == 'branch':
             # The camera supplies centre position; the known scenario sets
@@ -708,7 +708,7 @@ class PickPlaceManager(Node):
         grasp_pose.pose.position = Point(x=px, y=py, z=pz)
         grasp_pose.pose.orientation = grasp_orientation
 
-        # Approach horizontally from 25 cm behind the fruit.
+        # Approach from 25 cm behind the fruit along the oriented +Z axis.
         offset_pre = 0.25
         pre_grasp_pose = PoseStamped()
         pre_grasp_pose.header = grasp_pose.header

@@ -17,7 +17,7 @@ from segmentation_paths import add_segmentation_path
 
 add_segmentation_path()
 from orchard_randomization import ArmKinematics, load_scenario, rotation
-from pick_place_manager import euler_to_quaternion
+from pick_place_manager import euler_to_quaternion, multiply_quaternions
 
 
 def pose_matrix(pose):
@@ -135,7 +135,8 @@ def main():
         np.testing.assert_allclose(primitive_world(objects['pear'], 0)[:3, :3],
                                    rotation(s['pear_pose_world'][3:]), atol=1e-6)
         np.testing.assert_allclose(primitive_world(objects['pear'], 1)[:3, 3],
-                                   np.array(s['pear_pose_world'][:3])+[0., 0., .065], atol=1e-6)
+                                   np.array(s['pear_pose_world'][:3]) +
+                                   rotation(s['pear_pose_world'][3:]) @ [0., 0., .065], atol=1e-6)
         print(f'SCENE ALIGNMENT OK: seed={s["seed"]}, branch and pear aligned; '
               'MoveIt branch includes 15 mm clearance.')
 
@@ -143,14 +144,20 @@ def main():
         approach_yaw = s.get('grasp_approach_yaw_world')
         yaw = approach_yaw if approach_yaw is not None else math.atan2(s['pear_pose_world'][1], s['pear_pose_world'][0])
         previous = None
-        for name, target in arm.targets(s['pear_pose_world'][:3], approach_yaw).items():
+        pear_rpy = s['pear_pose_world'][3:]
+        for name, target in arm.targets(s['pear_pose_world'][:3], approach_yaw, pear_rpy).items():
             req = GetPositionIK.Request()
             req.ik_request.group_name = 'arm'
             req.ik_request.ik_link_name = 'grasp_frame'
             req.ik_request.pose_stamped.header.frame_id = 'world'
             p = req.ik_request.pose_stamped.pose
             p.position.x, p.position.y, p.position.z = target[:3, 3].tolist()
-            p.orientation = euler_to_quaternion(0., math.pi/2, yaw)
+            if approach_yaw is None:
+                p.orientation = euler_to_quaternion(0., math.pi/2, yaw)
+            else:
+                p.orientation = multiply_quaternions(
+                    euler_to_quaternion(*pear_rpy),
+                    euler_to_quaternion(0., math.pi/2, yaw-pear_rpy[2]))
             req.ik_request.robot_state.is_diff = True
             req.ik_request.robot_state.joint_state.name = s['ik_joint_names']+['left_finger_joint', 'right_finger_joint']
             req.ik_request.robot_state.joint_state.position = s['ik_solutions'][name]+[0., 0.]
@@ -212,7 +219,7 @@ def main():
         measured = grasp_world[:3, 3]
         assert any(np.linalg.norm(measured-np.array([p.pose.position.x, p.pose.position.y, p.pose.position.z])) < 1e-6
                    for p in poses if p.header.frame_id == 'world'), 'Manager target does not match a received vision position'
-        expected = arm.targets(measured, approach_yaw)
+        expected = arm.targets(measured, approach_yaw, pear_rpy)
         np.testing.assert_allclose(grasp_world, expected['grasp'], atol=1e-6,
                                    err_msg='Manager orientation differs from scenario; check launch mode and rebuilt files')
         np.testing.assert_allclose(pre_world, expected['pre_grasp'], atol=1e-6,

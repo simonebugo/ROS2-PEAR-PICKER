@@ -27,6 +27,7 @@ class PearWorldTransformer(Node):
             'stream_timeout_s': 10.0,
             'estimate_center': True, 'fruit_radius_m': 0.075,
             'publish_harvest_pose': False, 'pear_yaw_world': 0.0,
+            'pear_pitch_world': 0.0,
         }.items():
             self.declare_parameter(name, value, ParameterDescriptor(read_only=True))
         get = lambda name: self.get_parameter(name).value
@@ -35,12 +36,13 @@ class PearWorldTransformer(Node):
         self._estimate_center = get('estimate_center')
         self._radius = get('fruit_radius_m')
         self._pear_yaw_world = float(get('pear_yaw_world'))
+        self._pear_pitch_world = float(get('pear_pitch_world'))
         self._harvest_pub = (self.create_publisher(PoseStamped, '/harvest/pear_pose', 1)
                              if get('publish_harvest_pose') else None)
         if not math.isfinite(self._radius) or self._radius <= 0:
             raise ValueError('fruit_radius_m must be positive and finite.')
-        if not math.isfinite(self._pear_yaw_world):
-            raise ValueError('pear_yaw_world must be finite.')
+        if not all(math.isfinite(v) for v in (self._pear_yaw_world, self._pear_pitch_world)):
+            raise ValueError('pear_yaw_world and pear_pitch_world must be finite.')
         if not self._source or not self._target or not math.isfinite(self._timeout) or self._timeout <= 0:
             raise ValueError('Invalid frame or timeout.')
         # This lookup only depends on the static world -> fixed-camera chain.
@@ -162,10 +164,14 @@ class PearWorldTransformer(Node):
             pose = PoseStamped()
             pose.header = result.header
             pose.pose.position.x, pose.pose.position.y, pose.pose.position.z = self._center_result
-            # Position is observed by RGB-D. The vertical fruit's yaw is
-            # supplied by the known scenario, not estimated by this camera.
-            pose.pose.orientation.z = math.sin(self._pear_yaw_world / 2.0)
-            pose.pose.orientation.w = math.cos(self._pear_yaw_world / 2.0)
+            # RGB-D supplies position; the scenario supplies known Rz(yaw)Ry(pitch).
+            # The camera does not infer the fruit's attitude.
+            sy, cy = math.sin(self._pear_yaw_world/2), math.cos(self._pear_yaw_world/2)
+            sp, cp = math.sin(self._pear_pitch_world/2), math.cos(self._pear_pitch_world/2)
+            pose.pose.orientation.x = -sy*sp
+            pose.pose.orientation.y = cy*sp
+            pose.pose.orientation.z = sy*cp
+            pose.pose.orientation.w = cy*cp
             self._harvest_pub.publish(pose)
 
     def _report(self):

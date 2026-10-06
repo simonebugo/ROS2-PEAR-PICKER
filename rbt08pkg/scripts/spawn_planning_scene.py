@@ -194,7 +194,11 @@ class PlanningSceneSpawner(Node):
             branch.primitive_poses = [pose_branch]
             x, y, z = self.scenario['pear_pose_world'][:3]
             pose_pear.position.x, pose_pear.position.y, pose_pear.position.z = x, y, z
-            pose_pear_neck.position.x, pose_pear_neck.position.y, pose_pear_neck.position.z = x, y, z+.065
+            roll, pitch, yaw = self.scenario['pear_pose_world'][3:]
+            # Rotate the local neck offset with the same SDF model attitude.
+            pose_pear_neck.position.x = x + .065*(math.cos(yaw)*math.sin(pitch)*math.cos(roll) + math.sin(yaw)*math.sin(roll))
+            pose_pear_neck.position.y = y + .065*(math.sin(yaw)*math.sin(pitch)*math.cos(roll) - math.cos(yaw)*math.sin(roll))
+            pose_pear_neck.position.z = z + .065*math.cos(pitch)*math.cos(roll)
             pear_q = euler_to_quaternion(*self.scenario['pear_pose_world'][3:])
             for pear_part in (pose_pear, pose_pear_neck):
                 pear_part.orientation.x, pear_part.orientation.y = pear_q[:2]
