@@ -7,6 +7,9 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 import time
 import unittest
+from segmentation_paths import add_segmentation_path
+add_segmentation_path()
+from grasp_geometry import quaternion_rotation, robot_side_grasp_offset
 
 
 root = Path(__file__).resolve().parents[1]
@@ -118,12 +121,12 @@ class GraspAttitudeChecks(unittest.TestCase):
                  and n.name in ('euler_to_quaternion', 'multiply_quaternions')]
         funcs += [n for n in manager.body if isinstance(n, ast.FunctionDef) and n.name == 'pear_pose_callback']
         self.scope = dict(math=math, time=time, PoseStamped=stamped, Pose=pose, Point=NS, Quaternion=NS,
+                          quaternion_rotation=quaternion_rotation, robot_side_grasp_offset=robot_side_grasp_offset,
                           do_transform_pose_stamped=apply_tf,
                           rclpy=NS(time=NS(Time=lambda: 0), duration=NS(Duration=lambda **kw: 0)))
         exec(compile(ast.Module(body=funcs, type_ignores=[]), str(source), 'exec'), self.scope)
         self.tf = NS(angle=-.4)
-        self.node = NS(_grasp_orientation='branch', _approach_yaw_world=.8,
-                       _nominal_grasp_yaw_world=.6,
+        self.node = NS(_grasp_orientation='branch',
                        tf_buffer=NS(lookup_transform=lambda *a, **kw: self.tf),
                        get_clock=lambda: NS(now=lambda: NS(to_msg=lambda: 1)),
                        get_logger=lambda: NS(warn=lambda msg: None), publish_all_markers=lambda *a: None)
@@ -145,18 +148,21 @@ class GraspAttitudeChecks(unittest.TestCase):
         for key, direction in zip(('x', 'y', 'z'), axis):
             self.assertAlmostEqual(getattr(grasp.pose.position, key)-getattr(pre.pose.position, key), .25*direction)
         pear_in_base = self.apply_tf(self.node._pear_msg, self.tf)
+        pq = pear_in_base.pose.orientation
+        p = pear_in_base.pose.position
+        offset = robot_side_grasp_offset((p.x, p.y, p.z), quaternion_rotation((pq.x, pq.y, pq.z, pq.w)))
         expected = self.scope['multiply_quaternions'](
             pear_in_base.pose.orientation,
-            self.scope['euler_to_quaternion'](0., math.pi/2, self.node._nominal_grasp_yaw_world))
+            self.scope['euler_to_quaternion'](0., math.pi/2, offset))
         for key in ('x', 'y', 'z', 'w'):
             self.assertAlmostEqual(getattr(q, key), getattr(expected, key))
 
     def test_branch_composes_observed_center_known_pear_yaw_and_relative_grasp(self):
         pre, grasp, lift, *_ = self.update((.85, .55, 1.3))
-        expected_yaw = .8-.4
         q = grasp.pose.orientation
         axis = (2*(q.x*q.z+q.w*q.y), 2*(q.y*q.z-q.w*q.x), 1-2*(q.x*q.x+q.y*q.y))
         expected = self.apply_tf(self.node._pear_msg, self.tf).pose.position
+        expected_yaw = math.atan2(expected.y, expected.x)
         self.assertEqual(grasp.pose.position, expected)
         for value, target in zip(axis, (math.cos(expected_yaw), math.sin(expected_yaw), 0)):
             self.assertAlmostEqual(value, target)
@@ -166,8 +172,28 @@ class GraspAttitudeChecks(unittest.TestCase):
         self.assertEqual(lift.pose.orientation, grasp.pose.orientation)
         self.assertAlmostEqual(lift.pose.position.z-pre.pose.position.z, .1)
         other = self.update((.83, .57, 1.32))[1]
-        self.assertEqual(other.pose.orientation, grasp.pose.orientation)
+        self.assertNotEqual(other.pose.orientation, grasp.pose.orientation)
         self.assertNotEqual(other.pose.position, grasp.pose.position)
+
+    def test_degenerate_projection_invalidates_previous_target(self):
+        self.update((.85, .55, 1.3))
+        # Invert the test TF translation: the new point lies on pear +Z.
+        c, s = math.cos(self.tf.angle), math.sin(self.tf.angle)
+        self.update((c*(-.1)+s*.2, -s*(-.1)+c*.2, 1.3))
+        self.assertIsNone(self.node.latest_poses)
+
+    def test_projection_matches_robot_side_for_yaws_and_tilt(self):
+        for yaw in (math.radians(-15), math.radians(40)):
+            q = self.scope['euler_to_quaternion'](0., math.radians(20), yaw)
+            r = quaternion_rotation((q.x, q.y, q.z, q.w))
+            p = (.85, .55, 1.3)
+            offset = robot_side_grasp_offset(p, r)
+            d = [sum(r[i][j]*v for j, v in enumerate((math.cos(offset), math.sin(offset), 0.))) for i in range(3)]
+            normal = [row[2] for row in r]
+            projection = [p[i]-sum(p[j]*normal[j] for j in range(3))*normal[i] for i in range(3)]
+            norm = math.sqrt(sum(v*v for v in projection))
+            for a, b in zip(d, projection):
+                self.assertAlmostEqual(a, b/norm)
 
     def test_radial_mode_keeps_robot_to_pear_direction(self):
         self.node._grasp_orientation = 'radial'

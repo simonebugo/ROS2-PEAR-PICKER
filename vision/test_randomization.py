@@ -63,29 +63,26 @@ class RandomizationTests(unittest.TestCase):
                 self.assertLess(np.linalg.norm(rotation_error(targets[name][:3, :3], actual[:3, :3])), .003)
 
     def test_branch_yaw_rotates_attitude_and_retreat_together(self):
-        nominal = reference_approach_yaw(SHARE)
         for s in self.scenarios:
             yaw = s['grasp_approach_yaw_world']
-            self.assertAlmostEqual(yaw-nominal, np.deg2rad(s['sampled']['branch_yaw_deg']))
             goals = self.arm.targets(s['pear_pose_world'][:3], yaw, s['pear_pose_world'][3:])
             grasp, pre = goals['grasp'], goals['pre_grasp']
-            np.testing.assert_allclose(grasp[:3, :3],
-                                       rotation(s['pear_pose_world'][3:]) @ rotation((0, np.pi/2, nominal)), atol=1e-12)
+            normal = rotation(s['pear_pose_world'][3:])[:, 2]
+            p = np.array(s['pear_pose_world'][:3])-self.arm.base[:3, 3]
+            projection = p-normal*np.dot(p, normal)
+            np.testing.assert_allclose(grasp[:3, 2], projection/np.linalg.norm(projection), atol=1e-12)
             np.testing.assert_allclose(grasp[:3, 3]-pre[:3, 3], .25*grasp[:3, 2], atol=1e-12)
             np.testing.assert_allclose(goals['lift'][:3, 3]-pre[:3, 3], [0, 0, .1], atol=1e-12)
             self.assertAlmostEqual(s['pear_pose_world'][3], 0.)
             self.assertAlmostEqual(s['pear_pose_world'][4], np.deg2rad(s['sampled']['branch_elevation_deg']))
             self.assertAlmostEqual(s['pear_pose_world'][5], np.deg2rad(s['sampled']['branch_yaw_deg']))
-            np.testing.assert_allclose(
-                grasp[:3, :3],
-                rotation(s['pear_pose_world'][3:]) @ rotation((0, np.pi/2, nominal)),
-                atol=1e-12)
+            self.assertEqual(s['grasp_offset_policy'], 'robot_position')
 
-    def test_branch_attitude_is_independent_of_measured_position(self):
+    def test_branch_attitude_adapts_to_measured_position(self):
         yaw = reference_approach_yaw(SHARE)+.2
         a = self.arm.targets([.85, .55, 1.3], yaw)['grasp']
         b = self.arm.targets([.83, .57, 1.32], yaw)['grasp']
-        np.testing.assert_allclose(a[:3, :3], b[:3, :3])
+        self.assertFalse(np.allclose(a[:3, :3], b[:3, :3]))
         np.testing.assert_allclose(b[:3, 3], [.83, .57, 1.32])
 
     def test_radial_mode_preserves_previous_geometry(self):
@@ -166,9 +163,30 @@ class RandomizationTests(unittest.TestCase):
                 scenario = generate_scenario(SHARE, path, 0, 'radial')
                 self.assertEqual(scenario['attempt'], 1)
 
-    def test_branch_corner_without_ik_is_rejected_explicitly(self):
-        # A reachable point with radial attitude need not be reachable with
-        # the requested branch attitude. Never silently fall back to radial.
+    def test_legacy_branch_manifests_are_rejected(self):
+        legacy = dict(self.scenarios[0])
+        legacy.pop('grasp_offset_policy')
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'scenario.json'
+            path.write_text(json.dumps(legacy), encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, 'Obsolete fixed-offset'):
+                load_scenario(path)
+
+    def test_base_transform_and_degenerate_projection(self):
+        arm = copy.copy(self.arm)
+        arm.base = np.eye(4)
+        arm.base[:3, :3] = rotation((0., 0., .7))
+        arm.base[:3, 3] = [.2, -.1, .3]
+        pear = [.85, .55, 1.3]
+        goal = arm.targets(pear, 0., (0., .2, .4))['grasp']
+        normal = rotation((0., .2, .4))[:, 2]
+        p = np.array(pear)-arm.base[:3, 3]
+        d = p-normal*np.dot(p, normal)
+        np.testing.assert_allclose(goal[:3, 2], d/np.linalg.norm(d), atol=1e-12)
+        with self.assertRaisesRegex(ValueError, 'no usable projection'):
+            arm.targets(arm.base[:3, 3]+[0., 0., 1.], 0.)
+
+    def test_unreachable_branch_corner_is_rejected(self):
         data = load_bounds(BOUNDS)
         data.update(branch_height_m=[1.44, 1.44], branch_yaw_deg=[-12., -12.],
                     branch_elevation_deg=[-5., -5.], pear_distance_m=[.44, .44], max_attempts=1)

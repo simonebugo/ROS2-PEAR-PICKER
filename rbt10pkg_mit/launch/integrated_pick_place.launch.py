@@ -1,6 +1,7 @@
 import os
 import runpy
 import secrets
+import sys
 import tempfile
 
 from ament_index_python.packages import get_package_share_directory, get_package_prefix
@@ -16,14 +17,16 @@ from launch_ros.parameter_descriptions import ParameterValue
 def prepare_scenario(context):
     share = get_package_share_directory('rbt08pkg')
     helper = os.path.join(get_package_prefix('rbt08pkg'), 'lib', 'rbt08pkg', 'orchard_randomization.py')
-    api = runpy.run_path(helper)
+    previous_path = sys.path[:]
+    try:
+        sys.path.insert(0, os.path.dirname(helper))
+        api = runpy.run_path(helper)
+    finally:
+        sys.path[:] = previous_path
     mode = LaunchConfiguration('grasp_orientation').perform(context)
-    reference_yaw = api['reference_approach_yaw'](share)
     if LaunchConfiguration('randomize').perform(context) != 'true':
-        return [SetLaunchConfiguration('orchard_approach_yaw_world', str(reference_y)),
-                SetLaunchConfiguration('orchard_pear_yaw_world', '0.0'),
-                SetLaunchConfiguration('orchard_pear_pitch_world', '0.0'),
-                SetLaunchConfiguration('orchard_nominal_grasp_yaw_world', str(reference_yaw))]
+        return [SetLaunchConfiguration('orchard_pear_yaw_world', '0.0'),
+                SetLaunchConfiguration('orchard_pear_pitch_world', '0.0')]
     if LaunchConfiguration('pose_source').perform(context) != 'vision':
         raise RuntimeError('randomize:=true requires pose_source:=vision: the target must come from the camera.')
     raw_seed = LaunchConfiguration('seed').perform(context)
@@ -34,13 +37,11 @@ def prepare_scenario(context):
     return [
         SetLaunchConfiguration('orchard_world_file', world),
         SetLaunchConfiguration('orchard_scene_config', manifest),
-        SetLaunchConfiguration('orchard_approach_yaw_world', str(scenario['grasp_approach_yaw_world'] or 0.0)),
         SetLaunchConfiguration('orchard_pear_yaw_world', str(scenario['pear_pose_world'][5])),
         SetLaunchConfiguration('orchard_pear_pitch_world', str(scenario['pear_pose_world'][4])),
-        SetLaunchConfiguration('orchard_nominal_grasp_yaw_world', str(reference_yaw)),
         LogInfo(msg=f'ORCHARD seed={seed}, attempt={scenario["attempt"]}, pear={scenario["pear_pose_world"][:3]}'),
         LogInfo(msg=f'ORCHARD scenario={manifest} (position from vision; orientation mode={mode})'),
-        LogInfo(msg=f'ORCHARD branch yaw delta={scenario["sampled"]["branch_yaw_deg"]:.2f} deg; grasp yaw world={scenario["grasp_approach_yaw_world"]} rad'),
+        LogInfo(msg='ORCHARD grasp offset policy=robot_position (projection in pear XY)'),
     ]
 
 
@@ -86,8 +87,6 @@ def generate_launch_description():
             'require_vision_status': ParameterValue(vision, value_type=bool),
             'max_pose_age_s': ParameterValue(LaunchConfiguration('max_pose_age_s'), value_type=float),
             'grasp_orientation': LaunchConfiguration('grasp_orientation'),
-            'approach_yaw_world': ParameterValue(LaunchConfiguration('orchard_approach_yaw_world'), value_type=float),
-            'nominal_grasp_yaw_world': ParameterValue(LaunchConfiguration('orchard_nominal_grasp_yaw_world'), value_type=float),
             # Leave a small clearance during DetachableJoint reattachment.
             # Gazebo / DART cannot reattach parent and child while colliding.
             'gripper_closed_position': 0.005,
@@ -100,7 +99,7 @@ def generate_launch_description():
         DeclareLaunchArgument('render_engine', default_value='ogre', choices=['ogre', 'ogre2']),
         DeclareLaunchArgument('randomize', default_value='false', choices=['true', 'false']),
         DeclareLaunchArgument('grasp_orientation', default_value='branch', choices=['branch', 'radial'],
-                              description='Known branch yaw, or the previous robot-to-fruit radial approach.'),
+                              description='Robot-side approach in oriented pear XY, or horizontal radial approach.'),
         DeclareLaunchArgument('seed', default_value='42', description='Integer seed, or auto for a new recorded seed.'),
         DeclareLaunchArgument('randomization_config', default_value=os.path.join(robot_share, 'config', 'orchard_randomization.json')),
         SetLaunchConfiguration('orchard_world_file', os.path.join(robot_share, 'worlds', 'orchard.world.sdf')),

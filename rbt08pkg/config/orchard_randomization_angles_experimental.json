@@ -1,0 +1,21 @@
+{
+  "branch_height_m": [
+    1.4,
+    1.56
+  ],
+  "branch_yaw_deg": [
+    -70.0,
+    70.0
+  ],
+  "branch_elevation_deg": [
+    -30.0,
+    30.0
+  ],
+  "pear_distance_m": [
+    0.4,
+    0.56
+  ],
+  "max_attempts": 40,
+  "image_margin_px": 20,
+  "min_body_diameter_px": 20
+}

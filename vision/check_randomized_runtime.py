@@ -18,6 +18,7 @@ from segmentation_paths import add_segmentation_path
 add_segmentation_path()
 from orchard_randomization import ArmKinematics, load_scenario, rotation
 from pick_place_manager import euler_to_quaternion, multiply_quaternions
+from grasp_geometry import robot_side_grasp_offset
 
 
 def pose_matrix(pose):
@@ -145,6 +146,9 @@ def main():
         yaw = approach_yaw if approach_yaw is not None else math.atan2(s['pear_pose_world'][1], s['pear_pose_world'][0])
         previous = None
         pear_rpy = s['pear_pose_world'][3:]
+        if approach_yaw is not None:
+            p_base = (np.linalg.inv(arm.base) @ np.r_[s['pear_pose_world'][:3], 1.])[:3]
+            offset = robot_side_grasp_offset(p_base, arm.base[:3, :3].T @ rotation(pear_rpy))
         for name, target in arm.targets(s['pear_pose_world'][:3], approach_yaw, pear_rpy).items():
             req = GetPositionIK.Request()
             req.ik_request.group_name = 'arm'
@@ -157,7 +161,7 @@ def main():
             else:
                 p.orientation = multiply_quaternions(
                     euler_to_quaternion(*pear_rpy),
-                    euler_to_quaternion(0., math.pi/2, yaw-pear_rpy[2]))
+                    euler_to_quaternion(0., math.pi/2, offset))
             req.ik_request.robot_state.is_diff = True
             req.ik_request.robot_state.joint_state.name = s['ik_joint_names']+['left_finger_joint', 'right_finger_joint']
             req.ik_request.robot_state.joint_state.position = s['ik_solutions'][name]+[0., 0.]

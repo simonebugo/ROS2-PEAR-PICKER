@@ -181,13 +181,13 @@ The integrated launch defaults to `grasp_orientation:=branch`. It rotates the
 pear's local frame by the sampled branch yaw and elevation (pitch, at most 5 degrees
 in the supplied profiles). `/harvest/pear_pose` has a camera-estimated position
 and a scenario-supplied orientation; the camera does not estimate that rotation.
-The manager composes the pear orientation with the successful nominal
-pear-to-gripper attitude. The approach can therefore tilt slightly vertically,
-while retaining the nominal relative finger attitude. This preserves the original relative approach angle;
-it does not force the gripper perpendicular to the branch. The camera supplies
+The manager projects the robot-to-pear vector into the pear's local XY plane
+and computes a variable offset with atan2(local_y, local_x). It composes
+R_pear * Rz(offset) * Ry(90 degrees): gripper +Z lies in pear XY and faces
+the fruit from the robot side. The approach can therefore tilt vertically.
+It does not force the gripper perpendicular to the branch. The camera supplies
 the target position; branch orientation is known simulation information.
-The branch mode first retreats 25 cm and then lifts 10 cm; the older 20 cm
-endpoint caused a left-finger/branch collision in the live seed-42 preflight.
+The branch mode first retreats 25 cm and then lifts 10 cm along base +Z.
 Radial mode retains its previous 20 cm lift.
 
 Only the scenario's orientation is added to the vision-based pear pose; the
@@ -201,6 +201,8 @@ previously accepted in radial mode can fail with branch mode; the generator
 rejects those samples and tries another one. Thus a seed can produce different
 geometry between modes or software versions. Numerical IK is not a collision
 or full-trajectory guarantee; run the live preflight before the first trigger.
+New branch manifests carry `grasp_offset_policy: robot_position`; old manifests
+with fixed-offset IK seeds are rejected. Restart the launch to regenerate them.
 
 Offline regression tests (no running simulation needed):
 
@@ -211,12 +213,10 @@ cd "$WS"
 /usr/bin/python3 "$REPO/vision/test_motion_checks.py" -v
 ```
 
-Inspect the configured angle and targets while the integrated launch is running:
+Inspect the mode and targets while the integrated launch is running:
 
 ```bash
 ros2 param get /pick_place_manager grasp_orientation
-ros2 param get /pick_place_manager approach_yaw_world
-ros2 param get /pick_place_manager nominal_grasp_yaw_world
 ros2 topic echo /harvest/pear_pose --once
 ros2 topic echo /harvest/grasp_pose --once
 ros2 topic echo /harvest/pre_grasp_pose --once
@@ -225,8 +225,9 @@ ros2 topic echo /harvest/pre_grasp_pose --once
 In RViz add a `Pose` display on `/harvest/grasp_pose` and choose `Axes` to see
 the gripper frame; +Z is its approach axis. The existing target markers also
 show the approach direction. With different seeds, compare the grasp frame's
-orientation with both sampled yaw and elevation. Movement of the fruit in the
-image changes target position, not this scenario-supplied orientation.
+orientation with the pear frame. A change in measured position also changes
+the offset; fruit yaw and pitch still come from the scenario. The former
+`approach_yaw_world` and `nominal_grasp_yaw_world` manager parameters are removed.
 
 To return to the previous approach, stop the launch and restart with:
 

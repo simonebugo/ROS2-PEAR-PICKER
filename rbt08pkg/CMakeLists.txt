@@ -38,6 +38,7 @@ install(PROGRAMS
 )
 
 install(FILES
+  scripts/grasp_geometry.py
   scripts/pear_segmentation.py
   scripts/pear_depth.py
   scripts/pear_center.py

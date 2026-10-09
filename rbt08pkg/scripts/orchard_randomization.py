@@ -12,6 +12,7 @@ import random
 import xml.etree.ElementTree as ET
 
 import numpy as np
+from grasp_geometry import robot_side_grasp_offset
 
 
 def rotation(rpy):
@@ -133,9 +134,11 @@ class ArmKinematics:
         yaw = math.atan2(p[1], p[0])
         attitude = rotation((0., math.pi/2, yaw))
         if approach_yaw_world is not None:
-            nominal_yaw = approach_yaw_world - pear_rpy_world[2]
-            attitude = self.base[:3, :3].T @ (
-                rotation(pear_rpy_world) @ rotation((0., math.pi/2, nominal_yaw)))
+            # The legacy argument selects branch mode; its value no longer
+            # imposes a yaw. Match the manager's base-frame projection.
+            pear_in_base = self.base[:3, :3].T @ rotation(pear_rpy_world)
+            offset = robot_side_grasp_offset(p, pear_in_base)
+            attitude = pear_in_base @ rotation((0., math.pi/2, offset))
         direction = attitude[:, 2]
         pre = p - .25*direction
         # With the rotated wrist, the old 20 cm lift puts a finger into the
@@ -245,7 +248,12 @@ def generate_scenario(share, bounds_file, seed, grasp_orientation='branch'):
         approach_yaw = (nominal_yaw + math.radians(sampled['branch_yaw_deg'])
                         if grasp_orientation == 'branch' else None)
         solutions, previous = {}, None
-        for name, target in arm.targets(pear, approach_yaw, pear_rpy).items():
+        try:
+            targets = arm.targets(pear, approach_yaw, pear_rpy)
+        except ValueError:
+            rejected['degenerate_projection'] = rejected.get('degenerate_projection', 0)+1
+            continue
+        for name, target in targets.items():
             q = arm.solve(target, previous)
             if q is None:
                 rejected['ik_'+name] = rejected.get('ik_'+name, 0)+1
@@ -262,6 +270,7 @@ def generate_scenario(share, bounds_file, seed, grasp_orientation='branch'):
                 'branch_length': length, 'branch_radius': branch_radius,
                 'pear_pose_world': pear.tolist()+list(pear_rpy),
                 'grasp_orientation': grasp_orientation,
+                'grasp_offset_policy': 'robot_position',
                 'grasp_approach_yaw_world': approach_yaw,
                 'ik_joint_names': arm.names, 'ik_solutions': solutions,
                 'screening': 'numeric joint-limit IK and camera frustum; not collision-free path certification',
@@ -278,6 +287,8 @@ def load_scenario(path):
     if mode not in ('branch', 'radial'):
         raise ValueError('Invalid grasp_orientation in scenario.')
     angle = data.get('grasp_approach_yaw_world')
+    if mode == 'branch' and data.get('grasp_offset_policy') != 'robot_position':
+        raise ValueError('Obsolete fixed-offset branch manifest; regenerate with the updated launch.')
     if mode == 'branch' and (not isinstance(angle, (float, int)) or not math.isfinite(angle)):
         raise ValueError('Missing or invalid branch-based grasp yaw.')
     if mode == 'radial' and angle is not None:

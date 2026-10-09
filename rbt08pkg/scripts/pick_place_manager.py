@@ -21,6 +21,7 @@ from moveit_msgs.action import MoveGroup, ExecuteTrajectory
 from moveit_msgs.srv import GetCartesianPath, GetPositionIK, GetPlanningScene, ApplyPlanningScene
 from moveit_msgs.msg import PlanningSceneComponents, AllowedCollisionEntry
 from trajectory_checks import cartesian_problem
+from grasp_geometry import quaternion_rotation, robot_side_grasp_offset
 from moveit_msgs.msg import (
     Constraints,
     PositionConstraint,
@@ -70,15 +71,9 @@ class PickPlaceManager(Node):
         self.declare_parameter('require_vision_status', False)
         self.declare_parameter('max_pose_age_s', 5.0)
         self.declare_parameter('grasp_orientation', 'radial')
-        self.declare_parameter('approach_yaw_world', 0.0)
-        self.declare_parameter('nominal_grasp_yaw_world', 0.0)
         self._grasp_orientation = self.get_parameter('grasp_orientation').value
-        self._approach_yaw_world = float(self.get_parameter('approach_yaw_world').value)
-        self._nominal_grasp_yaw_world = float(self.get_parameter('nominal_grasp_yaw_world').value)
-        if (self._grasp_orientation not in ('branch', 'radial') or
-                not all(math.isfinite(v) for v in
-                        (self._approach_yaw_world, self._nominal_grasp_yaw_world))):
-            raise ValueError('Invalid grasp orientation mode or world yaw.')
+        if self._grasp_orientation not in ('branch', 'radial'):
+            raise ValueError('Invalid grasp orientation mode.')
         self._require_vision_status = bool(self.get_parameter('require_vision_status').value)
         self._max_pose_age = float(self.get_parameter('max_pose_age_s').value)
         if not math.isfinite(self._max_pose_age) or self._max_pose_age <= 0:
@@ -155,8 +150,8 @@ class PickPlaceManager(Node):
         self.get_logger().info('Pick-and-place manager initialized.')
         self.get_logger().info(
             f'Grasp orientation: {self._grasp_orientation}; '
-            f'configured world yaw={math.degrees(self._approach_yaw_world):.2f} deg '
-            '(used only in branch mode). Target position comes from /harvest/pear_pose.')
+            'branch offset follows the robot-side projection in pear XY. '
+            'Target position comes from /harvest/pear_pose.')
 
 
         self._move_group_client = ActionClient(self, MoveGroup, '/move_action')
@@ -685,14 +680,21 @@ class PickPlaceManager(Node):
         grasp_orientation = euler_to_quaternion(0.0, math.pi / 2.0, approach_yaw)
         if self._grasp_orientation == 'branch':
             # The camera supplies centre position; the known scenario sets
-            # pear orientation in that PoseStamped. The fixed pear->gripper
-            # rotation is the successful nominal grasp in the original world.
+            # pear orientation in that PoseStamped. Project robot->pear into
+            # pear XY to select the arrival side while respecting fruit tilt.
             pear_q = pear_in_base.pose.orientation
             norm = math.sqrt(sum(v*v for v in (pear_q.x, pear_q.y, pear_q.z, pear_q.w)))
             if not math.isfinite(norm) or abs(norm-1.0) > 1e-3:
                 self.get_logger().warn('Invalid pear orientation; grasp target unavailable.')
                 return
-            pear_to_grasp = euler_to_quaternion(0.0, math.pi / 2.0, self._nominal_grasp_yaw_world)
+            try:
+                offset = robot_side_grasp_offset(
+                    (px, py, pz),
+                    quaternion_rotation((pear_q.x, pear_q.y, pear_q.z, pear_q.w)))
+            except ValueError as e:
+                self.get_logger().warn(f'Grasp target unavailable: {e}')
+                return
+            pear_to_grasp = euler_to_quaternion(0.0, math.pi / 2.0, offset)
             grasp_orientation = multiply_quaternions(pear_q, pear_to_grasp)
 
         # Local +Z is the approach axis. Pre-grasp and retreat must follow the
